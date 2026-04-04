@@ -5,11 +5,10 @@ from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
 from sqlalchemy.orm import joinedload
 
 from app.database import Base, engine, SessionLocal
-from app.models import Cliente, Conta
+from app.models import Usuario, Cliente, Conta
 
 
 app = FastAPI()
@@ -20,13 +19,83 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
 
-class BaixarCobranca(BaseModel):
-    cliente_id: int
-    data_vencimento: str
+# =========================
+# LOGIN
+# =========================
+def usuario_logado(request: Request):
+    return request.cookies.get("usuario")
+
+
+def exigir_login(request: Request):
+    if not usuario_logado(request):
+        return RedirectResponse(url="/login", status_code=303)
+    return None
+
+
+@app.on_event("startup")
+def criar_usuario_padrao():
+    db = SessionLocal()
+    usuario = db.query(Usuario).filter(Usuario.username == "admin").first()
+
+    if not usuario:
+        usuario = Usuario(username="admin", senha="123456")
+        db.add(usuario)
+        db.commit()
+
+    db.close()
+
+
+@app.get("/login", response_class=HTMLResponse)
+def pagina_login(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {
+            "request": request,
+            "erro": None
+        }
+    )
+
+
+@app.post("/login", response_class=HTMLResponse)
+def fazer_login(
+    request: Request,
+    username: str = Form(...),
+    senha: str = Form(...)
+):
+    db = SessionLocal()
+    usuario = db.query(Usuario).filter(
+        Usuario.username == username,
+        Usuario.senha == senha
+    ).first()
+    db.close()
+
+    if not usuario:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "request": request,
+                "erro": "Usuário ou senha inválidos"
+            }
+        )
+
+    response = RedirectResponse(url="/dashboard", status_code=303)
+    response.set_cookie("usuario", usuario.username, httponly=True)
+    return response
+
+
+@app.get("/logout")
+def logout():
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie("usuario")
+    return response
 
 
 @app.get("/")
-def home():
+def home(request: Request):
+    if not usuario_logado(request):
+        return RedirectResponse(url="/login", status_code=303)
     return RedirectResponse(url="/dashboard", status_code=302)
 
 
@@ -104,6 +173,10 @@ def montar_cobrancas_pendentes(db):
 # =========================
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     hoje = date.today()
     db = SessionLocal()
 
@@ -134,6 +207,7 @@ def dashboard(request: Request):
         "dashboard.html",
         {
             "request": request,
+            "usuario": usuario_logado(request),
             "total_clientes": total_clientes,
             "total_contas": total_contas,
             "valor_hoje": valor_hoje,
@@ -150,6 +224,10 @@ def dashboard(request: Request):
 # =========================
 @app.get("/clientes", response_class=HTMLResponse)
 def listar_clientes(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     clientes = db.query(Cliente).order_by(Cliente.nome.asc()).all()
     db.close()
@@ -159,6 +237,7 @@ def listar_clientes(request: Request):
         "clientes.html",
         {
             "request": request,
+            "usuario": usuario_logado(request),
             "clientes": clientes,
             "cliente_editar": None
         }
@@ -167,10 +246,15 @@ def listar_clientes(request: Request):
 
 @app.post("/clientes")
 def criar_cliente(
+    request: Request,
     nome: str = Form(...),
     telefone: str = Form(""),
     observacao: str = Form("")
 ):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     cliente = Cliente(nome=nome, telefone=telefone, observacao=observacao)
     db.add(cliente)
@@ -181,6 +265,10 @@ def criar_cliente(
 
 @app.get("/editar-cliente/{id}", response_class=HTMLResponse)
 def editar_cliente_form(request: Request, id: int):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     clientes = db.query(Cliente).order_by(Cliente.nome.asc()).all()
     cliente_editar = db.query(Cliente).filter(Cliente.id == id).first()
@@ -191,6 +279,7 @@ def editar_cliente_form(request: Request, id: int):
         "clientes.html",
         {
             "request": request,
+            "usuario": usuario_logado(request),
             "clientes": clientes,
             "cliente_editar": cliente_editar
         }
@@ -199,11 +288,16 @@ def editar_cliente_form(request: Request, id: int):
 
 @app.post("/editar-cliente/{id}")
 def editar_cliente(
+    request: Request,
     id: int,
     nome: str = Form(...),
     telefone: str = Form(""),
     observacao: str = Form("")
 ):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     cliente = db.query(Cliente).filter(Cliente.id == id).first()
 
@@ -218,7 +312,11 @@ def editar_cliente(
 
 
 @app.get("/deletar-cliente/{id}")
-def deletar_cliente(id: int):
+def deletar_cliente(request: Request, id: int):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     cliente = db.query(Cliente).filter(Cliente.id == id).first()
 
@@ -235,6 +333,10 @@ def deletar_cliente(id: int):
 # =========================
 @app.get("/contas", response_class=HTMLResponse)
 def listar_contas(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
 
     contas = db.query(Conta).options(
@@ -250,6 +352,7 @@ def listar_contas(request: Request):
         "contas.html",
         {
             "request": request,
+            "usuario": usuario_logado(request),
             "contas": contas,
             "clientes": clientes,
             "conta_editar": None
@@ -259,6 +362,7 @@ def listar_contas(request: Request):
 
 @app.post("/contas")
 def criar_conta(
+    request: Request,
     cliente_id: int = Form(...),
     servico: str = Form(...),
     login: str = Form(""),
@@ -269,6 +373,10 @@ def criar_conta(
     status: str = Form("pendente"),
     observacao: str = Form("")
 ):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
 
     conta = Conta(
@@ -292,6 +400,10 @@ def criar_conta(
 
 @app.get("/editar-conta/{id}", response_class=HTMLResponse)
 def editar_conta_form(request: Request, id: int):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
 
     contas = db.query(Conta).options(
@@ -309,6 +421,7 @@ def editar_conta_form(request: Request, id: int):
         "contas.html",
         {
             "request": request,
+            "usuario": usuario_logado(request),
             "contas": contas,
             "clientes": clientes,
             "conta_editar": conta_editar
@@ -318,6 +431,7 @@ def editar_conta_form(request: Request, id: int):
 
 @app.post("/editar-conta/{id}")
 def editar_conta(
+    request: Request,
     id: int,
     cliente_id: int = Form(...),
     servico: str = Form(...),
@@ -330,6 +444,10 @@ def editar_conta(
     observacao: str = Form(""),
     motivo_manutencao: str = Form("")
 ):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     conta = db.query(Conta).filter(Conta.id == id).first()
 
@@ -351,7 +469,11 @@ def editar_conta(
 
 
 @app.get("/deletar-conta/{id}")
-def deletar_conta(id: int):
+def deletar_conta(request: Request, id: int):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     conta = db.query(Conta).filter(Conta.id == id).first()
 
@@ -364,7 +486,11 @@ def deletar_conta(id: int):
 
 
 @app.get("/renovar-conta/{id}")
-def renovar_conta(id: int):
+def renovar_conta(request: Request, id: int):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     conta = db.query(Conta).filter(Conta.id == id).first()
 
@@ -378,7 +504,11 @@ def renovar_conta(id: int):
 
 
 @app.get("/desvincular-conta/{id}")
-def desvincular_conta(id: int):
+def desvincular_conta(request: Request, id: int):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     conta = db.query(Conta).filter(Conta.id == id).first()
 
@@ -394,9 +524,14 @@ def desvincular_conta(id: int):
 
 @app.post("/manutencao-conta/{id}")
 def manutencao_conta(
+    request: Request,
     id: int,
     motivo: str = Form("")
 ):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     conta = db.query(Conta).filter(Conta.id == id).first()
 
@@ -412,6 +547,10 @@ def manutencao_conta(
 
 @app.get("/disponiveis", response_class=HTMLResponse)
 def listar_disponiveis(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
 
     contas = db.query(Conta).filter(
@@ -427,6 +566,7 @@ def listar_disponiveis(request: Request):
         "disponiveis.html",
         {
             "request": request,
+            "usuario": usuario_logado(request),
             "contas": contas,
             "clientes": clientes
         }
@@ -435,10 +575,15 @@ def listar_disponiveis(request: Request):
 
 @app.post("/vincular-conta/{id}")
 def vincular_conta(
+    request: Request,
     id: int,
     cliente_id: int = Form(...),
     data_vencimento: str = Form(...)
 ):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     conta = db.query(Conta).filter(Conta.id == id).first()
 
@@ -455,6 +600,10 @@ def vincular_conta(
 
 @app.get("/manutencao", response_class=HTMLResponse)
 def listar_manutencao(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
 
     contas = db.query(Conta).filter(
@@ -468,13 +617,18 @@ def listar_manutencao(request: Request):
         "manutencao.html",
         {
             "request": request,
+            "usuario": usuario_logado(request),
             "contas": contas
         }
     )
 
 
 @app.get("/disponibilizar-conta/{id}")
-def disponibilizar_conta(id: int):
+def disponibilizar_conta(request: Request, id: int):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     conta = db.query(Conta).filter(Conta.id == id).first()
 
@@ -491,6 +645,10 @@ def disponibilizar_conta(id: int):
 # =========================
 @app.get("/cobrancas", response_class=HTMLResponse)
 def pagina_cobrancas(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
     cobrancas_pendentes = montar_cobrancas_pendentes(db)
     db.close()
@@ -500,35 +658,7 @@ def pagina_cobrancas(request: Request):
         "cobrancas.html",
         {
             "request": request,
+            "usuario": usuario_logado(request),
             "cobrancas_pendentes": cobrancas_pendentes
         }
     )
-
-
-@app.get("/api/cobrancas")
-def listar_cobrancas():
-    db = SessionLocal()
-    resultado = montar_cobrancas_pendentes(db)
-    db.close()
-    return resultado
-
-
-@app.put("/api/cobrancas/pagar")
-def pagar(payload: BaixarCobranca):
-    db = SessionLocal()
-
-    data = datetime.strptime(payload.data_vencimento, "%Y-%m-%d").date()
-
-    contas = db.query(Conta).filter(
-        Conta.cliente_id == payload.cliente_id,
-        Conta.data_vencimento == data,
-        Conta.status == "pendente"
-    ).all()
-
-    for c in contas:
-        c.status = "paga"
-
-    db.commit()
-    db.close()
-
-    return {"ok": True}

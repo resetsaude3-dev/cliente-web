@@ -231,3 +231,51 @@ textarea {
   font-size: 14px;
   resize: vertical;
 }
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.login-card h1 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.login-subtitulo {
+  text-align: center;
+  color: #cbd5e1;
+  margin-bottom: 20px;
+}
+
+.login-form {
+  display: grid;
+  gap: 12px;
+}
+
+.erro-login {
+  background: #7f1d1d;
+  color: #fff;
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+
+.login-dados {
+  margin-top: 18px;
+  color: #cbd5e1;
+  font-size: 14px;
+  line-height: 1.6;
+}
