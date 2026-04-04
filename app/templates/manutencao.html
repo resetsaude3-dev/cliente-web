@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Manutenção</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="topo">
+      <h1>Contas em Manutenção</h1>
+      <div class="menu">
+        <a href="/dashboard">Dashboard</a>
+        <a href="/clientes">Clientes</a>
+        <a href="/contas">Contas</a>
+        <a href="/disponiveis">Disponíveis</a>
+        <a href="/manutencao">Manutenção</a>
+        <a href="/cobrancas">Cobranças</a>
+      </div>
+    </div>
+
+    <div class="cards">
+      {% for conta in contas %}
+        <div class="card card-interno">
+          <h3>{{ conta.servico }}</h3>
+          <p><strong>Login:</strong> {{ conta.login or '-' }}</p>
+          <p><strong>Perfil:</strong> {{ conta.perfil or '-' }}</p>
+          <p><strong>Valor:</strong> R$ {{ '%.2f'|format(conta.valor or 0) }}</p>
+          <p><strong>Motivo:</strong> {{ conta.motivo_manutencao or '-' }}</p>
+          <p><strong>Observação:</strong> {{ conta.observacao or '-' }}</p>
+
+          <div class="acoes">
+            <a class="btn success" href="/disponibilizar-conta/{{ conta.id }}">Mover para disponíveis</a>
+          </div>
+        </div>
+      {% else %}
+        <div class="card">Nenhuma conta em manutenção.</div>
+      {% endfor %}
+    </div>
+  </div>
+</body>
+</html>

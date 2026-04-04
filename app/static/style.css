@@ -1,0 +1,233 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: #fff;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.topo h1 {
+  margin: 0;
+}
+
+.menu {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.menu a {
+  text-decoration: none;
+  color: white;
+  background: #1e293b;
+  padding: 10px 14px;
+  border-radius: 10px;
+}
+
+.card {
+  background: #1e293b;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.card-interno {
+  background: #0b1220;
+  border: 1px solid #334155;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+input, select, button {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: none;
+  font-size: 14px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #334155;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.acoes {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.acoes-coluna {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+}
+
+.btn {
+  display: inline-block;
+  padding: 9px 12px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: white;
+  border: none;
+  cursor: pointer;
+  text-align: center;
+}
+
+.btn.primary {
+  background: #2563eb;
+}
+
+.btn.success {
+  background: #16a34a;
+}
+
+.btn.warning {
+  background: #d97706;
+}
+
+.btn.danger {
+  background: #dc2626;
+}
+
+.cards-resumo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.cards {
+  display: grid;
+  gap: 16px;
+}
+
+.card h3 {
+  margin-top: 0;
+}
+
+.card p {
+  margin: 8px 0;
+}
+
+.card small {
+  display: block;
+  margin-top: 8px;
+  color: #cbd5e1;
+  font-size: 16px;
+}
+
+.linha-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.badge.warning {
+  background: #f59e0b;
+  color: #111827;
+}
+
+.badge.danger {
+  background: #ef4444;
+  color: white;
+}
+
+.valor-total {
+  font-size: 18px;
+  color: #4ade80;
+  font-weight: bold;
+}
+
+.lista-servicos {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.servico-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  background: #111827;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #334155;
+  flex-wrap: wrap;
+}
+
+.servico-info span {
+  color: #cbd5e1;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modal-box {
+  width: 100%;
+  max-width: 500px;
+  background: #1e293b;
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.oculto {
+  display: none;
+}
+
+textarea {
+  width: 100%;
+  min-height: 120px;
+  border: none;
+  border-radius: 10px;
+  padding: 12px;
+  margin: 12px 0;
+  font-size: 14px;
+  resize: vertical;
+}

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+
+    <div class="topo">
+      <h1>Dashboard</h1>
+      <div class="menu">
+        <a href="/dashboard">Dashboard</a>
+        <a href="/clientes">Clientes</a>
+        <a href="/contas">Contas</a>
+        <a href="/disponiveis">Disponíveis</a>
+        <a href="/manutencao">Manutenção</a>
+        <a href="/cobrancas">Cobranças</a>
+      </div>
+    </div>
+
+    <div class="cards-resumo">
+      <div class="card">
+        <h3>Clientes</h3>
+        <p>{{ total_clientes }}</p>
+      </div>
+
+      <div class="card">
+        <h3>Contas</h3>
+        <p>{{ total_contas }}</p>
+      </div>
+
+      <div class="card">
+        <h3>Vence hoje</h3>
+        <p>{{ qtd_hoje }}</p>
+        <small>R$ {{ '%.2f'|format(valor_hoje) }}</small>
+      </div>
+
+      <div class="card">
+        <h3>Atrasadas</h3>
+        <p>{{ qtd_atrasado }}</p>
+        <small>R$ {{ '%.2f'|format(valor_atrasado) }}</small>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Clientes com contas vencidas</h2>
+
+      {% if cobrancas_pendentes %}
+        <div class="cards">
+          {% for item in cobrancas_pendentes %}
+            <div class="card card-interno">
+              <div class="linha-topo">
+                <h3>{{ item.cliente_nome }}</h3>
+                <span class="badge {% if item.tipo == 'atrasada' %}danger{% else %}warning{% endif %}">
+                  {% if item.tipo == 'atrasada' %}Atrasada{% else %}Vence hoje{% endif %}
+                </span>
+              </div>
+
+              <p><strong>Vencimento:</strong> {{ item.data_vencimento }}</p>
+              <p><strong>Quantidade:</strong> {{ item.total_contas }}</p>
+
+              <div class="lista-servicos">
+                {% for conta in item.contas_detalhes %}
+                  <div class="servico-item">
+                    <div class="servico-info">
+                      <strong>{{ conta.servico }}</strong><br>
+                      <span>Login: {{ conta.login or '-' }}</span><br>
+                      <span>Perfil: {{ conta.perfil or '-' }}</span><br>
+                      <span>Valor: R$ {{ '%.2f'|format(conta.valor) }}</span>
+                    </div>
+
+                    <div class="acoes acoes-coluna">
+                      <a class="btn warning" href="/renovar-conta/{{ conta.id }}">Renovar +30 dias</a>
+
+                      <button class="btn primary" onclick="confirmarDesvincular({{ conta.id }})">
+                        Desvincular
+                      </button>
+
+                      <button class="btn danger" onclick="abrirManutencao({{ conta.id }})">
+                        Manutenção
+                      </button>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+
+              <p class="valor-total"><strong>Total:</strong> R$ {{ '%.2f'|format(item.valor_total) }}</p>
+
+              <div class="acoes">
+                {% if item.whatsapp %}
+                  <a class="btn success" href="{{ item.whatsapp }}" target="_blank">WhatsApp</a>
+                {% else %}
+                  <button class="btn" disabled>Sem WhatsApp</button>
+                {% endif %}
+
+                <button class="btn primary" onclick="marcarPaga({{ item.cliente_id }}, '{{ item.data_vencimento }}')">
+                  Marcar paga
+                </button>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p>Nenhuma cobrança pendente no momento.</p>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <div id="modal-manutencao" class="modal oculto">
+    <div class="modal-box">
+      <h3>Enviar conta para manutenção</h3>
+      <form id="form-manutencao" method="post">
+        <textarea name="motivo" placeholder="Motivo da manutenção"></textarea>
+        <div class="acoes">
+          <button type="submit" class="btn danger">Confirmar</button>
+          <button type="button" class="btn primary" onclick="fecharManutencao()">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    async function marcarPaga(clienteId, dataVencimento) {
+      const confirmar = confirm("Deseja marcar essa cobrança como paga?");
+      if (!confirmar) return;
+
+      await fetch("/api/cobrancas/pagar", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          cliente_id: clienteId,
+          data_vencimento: dataVencimento
+        })
+      });
+
+      location.reload();
+    }
+
+    function confirmarDesvincular(contaId) {
+      const ok = confirm("Deseja desvincular esta conta e enviar para disponíveis?");
+      if (ok) {
+        window.location.href = "/desvincular-conta/" + contaId;
+      }
+    }
+
+    function abrirManutencao(contaId) {
+      const modal = document.getElementById("modal-manutencao");
+      const form = document.getElementById("form-manutencao");
+      form.action = "/manutencao-conta/" + contaId;
+      modal.classList.remove("oculto");
+    }
+
+    function fecharManutencao() {
+      const modal = document.getElementById("modal-manutencao");
+      modal.classList.add("oculto");
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Cobranças</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="topo">
+      <h1>Cobranças</h1>
+      <div class="menu">
+        <a href="/dashboard">Dashboard</a>
+        <a href="/clientes">Clientes</a>
+        <a href="/contas">Contas</a>
+        <a href="/disponiveis">Disponíveis</a>
+        <a href="/manutencao">Manutenção</a>
+        <a href="/cobrancas">Cobranças</a>
+      </div>
+    </div>
+
+    {% if cobrancas_pendentes %}
+      <div class="cards">
+        {% for item in cobrancas_pendentes %}
+          <div class="card card-interno">
+            <div class="linha-topo">
+              <h3>{{ item.cliente_nome }}</h3>
+              <span class="badge {% if item.tipo == 'atrasada' %}danger{% else %}warning{% endif %}">
+                {% if item.tipo == 'atrasada' %}Atrasada{% else %}Vence hoje{% endif %}
+              </span>
+            </div>
+
+            <p><strong>Vencimento:</strong> {{ item.data_vencimento }}</p>
+
+            <div class="lista-servicos">
+              {% for conta in item.contas_detalhes %}
+                <div class="servico-item">
+                  <div class="servico-info">
+                    <strong>{{ conta.servico }}</strong><br>
+                    <span>Login: {{ conta.login or '-' }}</span><br>
+                    <span>Perfil: {{ conta.perfil or '-' }}</span><br>
+                    <span>Valor: R$ {{ '%.2f'|format(conta.valor) }}</span>
+                  </div>
+
+                  <div class="acoes acoes-coluna">
+                    <a class="btn warning" href="/renovar-conta/{{ conta.id }}">Renovar +30 dias</a>
+                    <a class="btn primary" href="/desvincular-conta/{{ conta.id }}">Desvincular</a>
+                    <a class="btn danger" href="/manutencao-conta/{{ conta.id }}">Manutenção</a>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+
+            <p class="valor-total"><strong>Total:</strong> R$ {{ '%.2f'|format(item.valor_total) }}</p>
+
+            <div class="acoes">
+              {% if item.whatsapp %}
+                <a class="btn success" href="{{ item.whatsapp }}" target="_blank">Cobrar cliente</a>
+              {% else %}
+                <button class="btn" disabled>Sem WhatsApp</button>
+              {% endif %}
+
+              <button class="btn primary" onclick="marcarPaga({{ item.cliente_id }}, '{{ item.data_vencimento }}')">
+                Marcar paga
+              </button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="card">
+        Nenhuma cobrança vencida encontrada.
+      </div>
+    {% endif %}
+  </div>
+
+  <script>
+    async function marcarPaga(clienteId, dataVencimento) {
+      const confirmar = confirm("Deseja marcar essa cobrança como paga?");
+      if (!confirmar) return;
+
+      await fetch("/api/cobrancas/pagar", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          cliente_id: clienteId,
+          data_vencimento: dataVencimento
+        })
+      });
+
+      location.reload();
+    }
+  </script>
+</body>
+</html>

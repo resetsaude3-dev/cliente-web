@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Contas</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="topo">
+      <h1>Contas</h1>
+      <div class="menu">
+        <a href="/dashboard">Dashboard</a>
+        <a href="/clientes">Clientes</a>
+        <a href="/contas">Contas</a>
+        <a href="/disponiveis">Disponíveis</a>
+        <a href="/manutencao">Manutenção</a>
+        <a href="/cobrancas">Cobranças</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>
+        {% if conta_editar %}
+          Editar conta
+        {% else %}
+          Nova conta
+        {% endif %}
+      </h2>
+
+      <form method="post" action="{% if conta_editar %}/editar-conta/{{ conta_editar.id }}{% else %}/contas{% endif %}" class="form-grid">
+        <select name="cliente_id" required>
+          <option value="">Selecione o cliente</option>
+          {% for cliente in clientes %}
+            <option value="{{ cliente.id }}" {% if conta_editar and conta_editar.cliente_id == cliente.id %}selected{% endif %}>
+              {{ cliente.nome }}
+            </option>
+          {% endfor %}
+        </select>
+
+        <input type="text" name="servico" placeholder="Serviço" value="{{ conta_editar.servico if conta_editar else '' }}" required>
+        <input type="text" name="login" placeholder="Login" value="{{ conta_editar.login if conta_editar else '' }}">
+        <input type="text" name="senha" placeholder="Senha" value="{{ conta_editar.senha if conta_editar else '' }}">
+        <input type="text" name="perfil" placeholder="Perfil" value="{{ conta_editar.perfil if conta_editar else '' }}">
+        <input type="number" step="0.01" name="valor" placeholder="Valor" value="{{ conta_editar.valor if conta_editar else '' }}" required>
+        <input type="date" name="data_vencimento" value="{{ conta_editar.data_vencimento if conta_editar else '' }}" required>
+
+        <select name="status" required>
+          <option value="pendente" {% if conta_editar and conta_editar.status == 'pendente' %}selected{% endif %}>Pendente</option>
+          <option value="paga" {% if conta_editar and conta_editar.status == 'paga' %}selected{% endif %}>Paga</option>
+          <option value="cancelada" {% if conta_editar and conta_editar.status == 'cancelada' %}selected{% endif %}>Cancelada</option>
+          <option value="disponivel" {% if conta_editar and conta_editar.status == 'disponivel' %}selected{% endif %}>Disponível</option>
+          <option value="manutencao" {% if conta_editar and conta_editar.status == 'manutencao' %}selected{% endif %}>Manutenção</option>
+        </select>
+
+        <input type="text" name="observacao" placeholder="Observação" value="{{ conta_editar.observacao if conta_editar else '' }}">
+
+        <button type="submit" class="btn primary">
+          {% if conta_editar %}Salvar alteração{% else %}Cadastrar conta{% endif %}
+        </button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Lista de contas</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Serviço</th>
+            <th>Login</th>
+            <th>Perfil</th>
+            <th>Valor</th>
+            <th>Vencimento</th>
+            <th>Status</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for conta in contas %}
+          <tr>
+            <td>{{ conta.cliente.nome if conta.cliente else '-' }}</td>
+            <td>{{ conta.servico }}</td>
+            <td>{{ conta.login or '' }}</td>
+            <td>{{ conta.perfil or '' }}</td>
+            <td>R$ {{ '%.2f'|format(conta.valor or 0) }}</td>
+            <td>{{ conta.data_vencimento }}</td>
+            <td>{{ conta.status }}</td>
+            <td class="acoes">
+              <a class="btn success" href="/renovar-conta/{{ conta.id }}">Renovar +30d</a>
+              <a class="btn warning" href="/editar-conta/{{ conta.id }}">Editar</a>
+              <a class="btn danger" href="/deletar-conta/{{ conta.id }}" onclick="return confirm('Excluir esta conta?')">Excluir</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>
