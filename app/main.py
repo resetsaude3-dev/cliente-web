@@ -5,7 +5,9 @@ from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 from sqlalchemy.orm import joinedload
+from passlib.context import CryptContext
 
 from app.database import Base, engine, SessionLocal
 from app.models import Usuario, Cliente, Conta
@@ -18,10 +20,28 @@ Base.metadata.create_all(bind=engine)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+class BaixarCobranca(BaseModel):
+    cliente_id: int
+    data_vencimento: str
+
 
 # =========================
-# LOGIN
+# SENHA / LOGIN
 # =========================
+def gerar_hash_senha(senha: str) -> str:
+    return pwd_context.hash(senha)
+
+
+def verificar_senha(senha_digitada: str, senha_salva: str) -> bool:
+    try:
+        return pwd_context.verify(senha_digitada, senha_salva)
+    except Exception:
+        return False
+
+
 def usuario_logado(request: Request):
     return request.cookies.get("usuario")
 
@@ -36,20 +56,27 @@ def exigir_login(request: Request):
 def criar_usuario_padrao():
     db = SessionLocal()
 
-    # apaga TODOS usuários antigos
-   
-    db.commit()
+    usuario = db.query(Usuario).filter(Usuario.username == "hdstore").first()
 
-    # cria usuário novo
-    usuario = Usuario(username="hdstore", senha="wad13sil")
-    db.add(usuario)
-    db.commit()
+    if not usuario:
+        usuario = Usuario(
+            username="hdstore",
+            senha=gerar_hash_senha("wad13sil")
+        )
+        db.add(usuario)
+        db.commit()
 
     db.close()
 
 
+# =========================
+# LOGIN
+# =========================
 @app.get("/login", response_class=HTMLResponse)
 def pagina_login(request: Request):
+    if usuario_logado(request):
+        return RedirectResponse(url="/dashboard", status_code=302)
+
     return templates.TemplateResponse(
         request,
         "login.html",
@@ -67,13 +94,10 @@ def fazer_login(
     senha: str = Form(...)
 ):
     db = SessionLocal()
-    usuario = db.query(Usuario).filter(
-        Usuario.username == username,
-        Usuario.senha == senha
-    ).first()
+    usuario = db.query(Usuario).filter(Usuario.username == username).first()
     db.close()
 
-    if not usuario:
+    if not usuario or not verificar_senha(senha, usuario.senha):
         return templates.TemplateResponse(
             request,
             "login.html",
@@ -84,7 +108,12 @@ def fazer_login(
         )
 
     response = RedirectResponse(url="/dashboard", status_code=303)
-    response.set_cookie("usuario", usuario.username, httponly=True)
+    response.set_cookie(
+        key="usuario",
+        value=usuario.username,
+        httponly=True,
+        samesite="lax"
+    )
     return response
 
 
@@ -93,6 +122,100 @@ def logout():
     response = RedirectResponse(url="/login", status_code=303)
     response.delete_cookie("usuario")
     return response
+
+
+@app.get("/trocar-senha", response_class=HTMLResponse)
+def pagina_trocar_senha(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    return templates.TemplateResponse(
+        request,
+        "trocar_senha.html",
+        {
+            "request": request,
+            "usuario": usuario_logado(request),
+            "erro": None,
+            "sucesso": None
+        }
+    )
+
+
+@app.post("/trocar-senha", response_class=HTMLResponse)
+def trocar_senha(
+    request: Request,
+    senha_atual: str = Form(...),
+    nova_senha: str = Form(...),
+    confirmar_senha: str = Form(...)
+):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    username = usuario_logado(request)
+    db = SessionLocal()
+    usuario = db.query(Usuario).filter(Usuario.username == username).first()
+
+    if not usuario:
+        db.close()
+        response = RedirectResponse(url="/login", status_code=303)
+        response.delete_cookie("usuario")
+        return response
+
+    if not verificar_senha(senha_atual, usuario.senha):
+        db.close()
+        return templates.TemplateResponse(
+            request,
+            "trocar_senha.html",
+            {
+                "request": request,
+                "usuario": username,
+                "erro": "Senha atual incorreta",
+                "sucesso": None
+            }
+        )
+
+    if len(nova_senha) < 6:
+        db.close()
+        return templates.TemplateResponse(
+            request,
+            "trocar_senha.html",
+            {
+                "request": request,
+                "usuario": username,
+                "erro": "A nova senha deve ter pelo menos 6 caracteres",
+                "sucesso": None
+            }
+        )
+
+    if nova_senha != confirmar_senha:
+        db.close()
+        return templates.TemplateResponse(
+            request,
+            "trocar_senha.html",
+            {
+                "request": request,
+                "usuario": username,
+                "erro": "A confirmação da senha não confere",
+                "sucesso": None
+            }
+        )
+
+    usuario.senha = gerar_hash_senha(nova_senha)
+    db.commit()
+    db.close()
+
+    return templates.TemplateResponse(
+        request,
+        "trocar_senha.html",
+        {
+            "request": request,
+            "usuario": username,
+            "erro": None,
+            "sucesso": "Senha alterada com sucesso"
+        }
+    )
 
 
 @app.get("/")
@@ -665,3 +788,40 @@ def pagina_cobrancas(request: Request):
             "cobrancas_pendentes": cobrancas_pendentes
         }
     )
+
+
+@app.get("/api/cobrancas")
+def listar_cobrancas(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    db = SessionLocal()
+    resultado = montar_cobrancas_pendentes(db)
+    db.close()
+    return resultado
+
+
+@app.put("/api/cobrancas/pagar")
+def pagar(request: Request, payload: BaixarCobranca):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    db = SessionLocal()
+
+    data = datetime.strptime(payload.data_vencimento, "%Y-%m-%d").date()
+
+    contas = db.query(Conta).filter(
+        Conta.cliente_id == payload.cliente_id,
+        Conta.data_vencimento == data,
+        Conta.status == "pendente"
+    ).all()
+
+    for c in contas:
+        c.status = "paga"
+
+    db.commit()
+    db.close()
+
+    return {"ok": True}

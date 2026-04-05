@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Trocar Senha</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="topo">
+      <h1>Trocar senha</h1>
+      <div class="menu">
+        <a href="/dashboard">Dashboard</a>
+        <a href="/clientes">Clientes</a>
+        <a href="/contas">Contas</a>
+        <a href="/disponiveis">Disponíveis</a>
+        <a href="/manutencao">Manutenção</a>
+        <a href="/cobrancas">Cobranças</a>
+        <a href="/trocar-senha">Trocar senha</a>
+        <a href="/logout">Sair</a>
+      </div>
+    </div>
+
+    <div class="login-wrapper">
+      <div class="login-card-novo">
+        <h2 style="text-align:center; margin-top:0;">Alterar senha</h2>
+
+        {% if erro %}
+          <div class="erro-login">{{ erro }}</div>
+        {% endif %}
+
+        {% if sucesso %}
+          <div class="sucesso-login">{{ sucesso }}</div>
+        {% endif %}
+
+        <form method="post" action="/trocar-senha" class="login-form-novo">
+          <div class="campo-login">
+            <label>Senha atual</label>
+            <input type="password" name="senha_atual" required>
+          </div>
+
+          <div class="campo-login">
+            <label>Nova senha</label>
+            <input type="password" name="nova_senha" required>
+          </div>
+
+          <div class="campo-login">
+            <label>Confirmar nova senha</label>
+            <input type="password" name="confirmar_senha" required>
+          </div>
+
+          <button type="submit" class="btn-login">Salvar nova senha</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

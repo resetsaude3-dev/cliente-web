@@ -395,3 +395,12 @@ textarea {
   margin-bottom: 16px;
   text-align: center;
 }
+.sucesso-login {
+  background: rgba(22, 163, 74, 0.18);
+  border: 1px solid rgba(22, 163, 74, 0.45);
+  color: #bbf7d0;
+  padding: 12px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  text-align: center;
+}
