@@ -41,7 +41,7 @@ def criar_usuario_padrao():
     db.commit()
 
     # cria usuário novo
-    usuario = Usuario(username="hdstores", senha="wad13sii")
+    usuario = Usuario(username="hdstore", senha="wad13sil")
     db.add(usuario)
     db.commit()
 
