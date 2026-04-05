@@ -404,3 +404,14 @@ textarea {
   margin-bottom: 16px;
   text-align: center;
 }
+
+.tag-atual {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #2563eb;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}

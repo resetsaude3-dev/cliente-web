@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Usuários</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="topo">
+      <h1>Usuários</h1>
+      <div class="menu">
+        <a href="/dashboard">Dashboard</a>
+        <a href="/clientes">Clientes</a>
+        <a href="/contas">Contas</a>
+        <a href="/disponiveis">Disponíveis</a>
+        <a href="/manutencao">Manutenção</a>
+        <a href="/cobrancas">Cobranças</a>
+        <a href="/usuarios">Usuários</a>
+        <a href="/trocar-senha">Trocar senha</a>
+        <a href="/backup">Backup</a>
+        <a href="/logout">Sair</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Novo usuário</h2>
+
+      {% if erro %}
+        <div class="erro-login">{{ erro }}</div>
+      {% endif %}
+
+      {% if sucesso %}
+        <div class="sucesso-login">{{ sucesso }}</div>
+      {% endif %}
+
+      <form method="post" action="/usuarios" class="form-grid">
+        <input type="text" name="username" placeholder="Usuário" required>
+        <input type="password" name="senha" placeholder="Senha" required>
+        <button type="submit" class="btn success">Criar usuário</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Lista de usuários</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Usuário</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in usuarios %}
+          <tr>
+            <td>
+              {{ u.username }}
+              {% if u.username == usuario %}
+                <span class="tag-atual">Você</span>
+              {% endif %}
+            </td>
+            <td class="acoes">
+              {% if u.username != usuario %}
+                <a class="btn danger" href="/deletar-usuario/{{ u.id }}" onclick="return confirm('Excluir este usuário?')">
+                  Excluir
+                </a>
+              {% else %}
+                <button class="btn" disabled>Usuário atual</button>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

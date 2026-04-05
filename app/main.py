@@ -892,3 +892,107 @@ def gerar_backup(request: Request):
             "Content-Disposition": f'attachment; filename="{nome_arquivo}"'
         }
     )
+    
+@app.get("/usuarios", response_class=HTMLResponse)
+def listar_usuarios(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    db = SessionLocal()
+    usuarios = db.query(Usuario).order_by(Usuario.username.asc()).all()
+    db.close()
+
+    return templates.TemplateResponse(
+        request,
+        "usuarios.html",
+        {
+            "request": request,
+            "usuario": usuario_logado(request),
+            "usuarios": usuarios,
+            "erro": None,
+            "sucesso": None
+        }
+    )
+
+
+@app.post("/usuarios")
+def criar_usuario(
+    request: Request,
+    username: str = Form(...),
+    senha: str = Form(...)
+):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    username = username.strip()
+
+    db = SessionLocal()
+
+    existente = db.query(Usuario).filter(Usuario.username == username).first()
+    if existente:
+        usuarios = db.query(Usuario).order_by(Usuario.username.asc()).all()
+        db.close()
+
+        return templates.TemplateResponse(
+            request,
+            "usuarios.html",
+            {
+                "request": request,
+                "usuario": usuario_logado(request),
+                "usuarios": usuarios,
+                "erro": "Esse usuário já existe",
+                "sucesso": None
+            }
+        )
+
+    if len(senha) < 6:
+        usuarios = db.query(Usuario).order_by(Usuario.username.asc()).all()
+        db.close()
+
+        return templates.TemplateResponse(
+            request,
+            "usuarios.html",
+            {
+                "request": request,
+                "usuario": usuario_logado(request),
+                "usuarios": usuarios,
+                "erro": "A senha deve ter pelo menos 6 caracteres",
+                "sucesso": None
+            }
+        )
+
+    novo_usuario = Usuario(
+        username=username,
+        senha=gerar_hash_senha(senha)
+    )
+
+    db.add(novo_usuario)
+    db.commit()
+    db.close()
+
+    return RedirectResponse(url="/usuarios", status_code=303)
+
+
+@app.get("/deletar-usuario/{id}")
+def deletar_usuario(request: Request, id: int):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    usuario_atual = usuario_logado(request)
+
+    db = SessionLocal()
+    usuario = db.query(Usuario).filter(Usuario.id == id).first()
+
+    if usuario:
+        if usuario.username == usuario_atual:
+            db.close()
+            return RedirectResponse(url="/usuarios", status_code=303)
+
+        db.delete(usuario)
+        db.commit()
+
+    db.close()
+    return RedirectResponse(url="/usuarios", status_code=303)
