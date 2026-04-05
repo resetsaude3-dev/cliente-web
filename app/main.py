@@ -35,14 +35,13 @@ def exigir_login(request: Request):
 @app.on_event("startup")
 def criar_usuario_padrao():
     db = SessionLocal()
-   usuario = db.query(Usuario).filter(Usuario.username == "admin").first()
 
-if usuario:
-    usuario.username = "hdstores"
-    usuario.senha = "wad13sil"
+    # apaga TODOS usuários antigos
+    db.query(Usuario).delete()
     db.commit()
-else:
-    usuario = Usuario(username="hdstore", senha="wad13sil")
+
+    # cria usuário novo
+    usuario = Usuario(username="hdstores", senha="wad13sii")
     db.add(usuario)
     db.commit()
 
