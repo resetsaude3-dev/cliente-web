@@ -37,7 +37,7 @@ def criar_usuario_padrao():
     db = SessionLocal()
 
     # apaga TODOS usuários antigos
-    db.query(Usuario).delete()
+   
     db.commit()
 
     # cria usuário novo
