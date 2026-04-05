@@ -12,6 +12,10 @@ from passlib.context import CryptContext
 from app.database import Base, engine, SessionLocal
 from app.models import Usuario, Cliente, Conta
 
+import json
+from io import BytesIO
+from fastapi.responses import StreamingResponse
+
 
 app = FastAPI()
 
@@ -825,3 +829,66 @@ def pagar(request: Request, payload: BaixarCobranca):
     db.close()
 
     return {"ok": True}
+    
+@app.get("/backup")
+def gerar_backup(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    db = SessionLocal()
+
+    usuarios = db.query(Usuario).all()
+    clientes = db.query(Cliente).all()
+    contas = db.query(Conta).all()
+
+    dados = {
+        "usuarios": [
+            {
+                "id": u.id,
+                "username": u.username,
+                "senha": u.senha
+            }
+            for u in usuarios
+        ],
+        "clientes": [
+            {
+                "id": c.id,
+                "nome": c.nome,
+                "telefone": c.telefone,
+                "observacao": c.observacao
+            }
+            for c in clientes
+        ],
+        "contas": [
+            {
+                "id": c.id,
+                "cliente_id": c.cliente_id,
+                "servico": c.servico,
+                "login": c.login,
+                "senha": c.senha,
+                "perfil": c.perfil,
+                "valor": c.valor,
+                "data_vencimento": c.data_vencimento.isoformat() if c.data_vencimento else None,
+                "status": c.status,
+                "observacao": c.observacao,
+                "motivo_manutencao": c.motivo_manutencao
+            }
+            for c in contas
+        ]
+    }
+
+    db.close()
+
+    conteudo = json.dumps(dados, ensure_ascii=False, indent=2)
+    arquivo = BytesIO(conteudo.encode("utf-8"))
+
+    nome_arquivo = f"backup_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
+
+    return StreamingResponse(
+        arquivo,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{nome_arquivo}"'
+        }
+    )
