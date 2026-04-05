@@ -2,34 +2,30 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body class="login-body">
-  <div class="login-wrapper">
-    <div class="login-card-novo">
-      <div class="login-logo">🔐</div>
-      <h1>Bem-vindo</h1>
-      <p class="login-subtitulo">Entre para acessar o sistema</p>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <h1>Entrar</h1>
+      <p class="login-subtitulo">Sistema de clientes e cobranças</p>
 
       {% if erro %}
         <div class="erro-login">{{ erro }}</div>
       {% endif %}
 
-      <form method="post" action="/login" class="login-form-novo">
-        <div class="campo-login">
-          <label>Usuário</label>
-          <input type="text" name="username" placeholder="Digite seu usuário" required>
-        </div>
-
-        <div class="campo-login">
-          <label>Senha</label>
-          <input type="password" name="senha" placeholder="Digite sua senha" required>
-        </div>
-
-        <button type="submit" class="btn-login">Entrar</button>
+      <form method="post" action="/login" class="login-form">
+        <input type="text" name="username" placeholder="Usuário" required>
+        <input type="password" name="senha" placeholder="Senha" required>
+        <button type="submit" class="btn primary">Entrar</button>
       </form>
+
+      <div class="login-dados">
+        <strong>Padrão inicial:</strong><br>
+        usuário: admin<br>
+        senha: 123456
+      </div>
     </div>
   </div>
 </body>
