@@ -484,14 +484,14 @@ def listar_contas(
 
     query = db.query(Conta).options(joinedload(Conta.cliente))
 
-    if cliente_id and cliente_id.isdigit():
+    if cliente_id.strip():
         query = query.filter(Conta.cliente_id == int(cliente_id))
 
-    if servico:
-        query = query.filter(Conta.servico.ilike(f"%{servico}%"))
+    if servico.strip():
+        query = query.filter(Conta.servico.ilike(f"%{servico.strip()}%"))
 
-    if status:
-        query = query.filter(Conta.status == status)
+    if status.strip():
+        query = query.filter(Conta.status == status.strip())
 
     contas = query.order_by(Conta.data_vencimento.asc()).all()
     clientes = db.query(Cliente).order_by(Cliente.nome.asc()).all()
