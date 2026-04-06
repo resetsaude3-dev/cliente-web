@@ -415,3 +415,37 @@ textarea {
   font-size: 12px;
   font-weight: bold;
 }
+
+/* RESPONSIVO CELULAR */
+@media (max-width: 768px) {
+
+    .container {
+        padding: 10px;
+    }
+
+    .menu {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .menu a {
+        font-size: 12px;
+        padding: 6px 10px;
+    }
+
+    .cards-resumo {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .card {
+        padding: 15px;
+        font-size: 14px;
+    }
+
+    h1 {
+        font-size: 20px;
+    }
+}
