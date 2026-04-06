@@ -301,34 +301,31 @@ def montar_cobrancas_pendentes(db):
 # =========================
 # DASHBOARD
 # =========================
+
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
     redir = exigir_login(request)
     if redir:
         return redir
 
-    hoje = date.today()
     db = SessionLocal()
+    hoje = date.today()
 
     total_clientes = db.query(Cliente).count()
     total_contas = db.query(Conta).count()
 
-    contas_hoje = db.query(Conta).filter(
-        Conta.status == "pendente",
-        Conta.cliente_id.isnot(None),
-        Conta.data_vencimento == hoje
-    ).all()
+    pendentes = db.query(Conta).filter(Conta.status == "pendente").count()
 
-    contas_atrasadas = db.query(Conta).filter(
+    vencidas = db.query(Conta).filter(
         Conta.status == "pendente",
-        Conta.cliente_id.isnot(None),
         Conta.data_vencimento < hoje
-    ).all()
+    ).count()
 
-    valor_hoje = sum(c.valor or 0 for c in contas_hoje)
-    valor_atrasado = sum(c.valor or 0 for c in contas_atrasadas)
+    vencendo_hoje = db.query(Conta).filter(
+        Conta.data_vencimento == hoje
+    ).count()
 
-    cobrancas_pendentes = montar_cobrancas_pendentes(db)
+    pagas = db.query(Conta).filter(Conta.status == "paga").count()
 
     db.close()
 
@@ -340,11 +337,10 @@ def dashboard(request: Request):
             "usuario": usuario_logado(request),
             "total_clientes": total_clientes,
             "total_contas": total_contas,
-            "valor_hoje": valor_hoje,
-            "valor_atrasado": valor_atrasado,
-            "qtd_hoje": len(contas_hoje),
-            "qtd_atrasado": len(contas_atrasadas),
-            "cobrancas_pendentes": cobrancas_pendentes
+            "pendentes": pendentes,
+            "vencidas": vencidas,
+            "vencendo_hoje": vencendo_hoje,
+            "pagas": pagas,
         }
     )
 
