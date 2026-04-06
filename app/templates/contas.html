@@ -123,9 +123,14 @@
             <td>{{ conta.data_vencimento }}</td>
             <td>{{ conta.status }}</td>
             <td class="acoes">
-              <a class="btn success" href="/renovar-conta/{{ conta.id }}">Renovar +30d</a>
-              <a class="btn warning" href="/editar-conta/{{ conta.id }}">Editar</a>
-              <a class="btn danger" href="/deletar-conta/{{ conta.id }}" onclick="return confirm('Excluir esta conta?')">Excluir</a>
+                <a class="btn success" href="/renovar-conta/{{ conta.id }}">Renovar +30d</a>
+    
+                <a class="btn primary" href="/enviar-cobranca-oficial/{{ conta.id }}">
+                  Cobrar WhatsApp
+                </a>
+
+                <a class="btn warning" href="/editar-conta/{{ conta.id }}">Editar</a>
+                <a class="btn danger" href="/deletar-conta/{{ conta.id }}">Excluir</a>
             </td>
           </tr>
           {% endfor %}
