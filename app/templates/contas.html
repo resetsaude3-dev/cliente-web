@@ -79,7 +79,11 @@
     {% endfor %}
   </select>
 
-  <input type="text" name="servico" placeholder="Serviço..." value="{{ servico or '' }}">
+  <select name="servico">
+  <option value="">Todos serviços</option>
+  <option value="iptv" {% if servico == "iptv" %}selected{% endif %}>IPTV</option>
+  <option value="netflix" {% if servico == "netflix" %}selected{% endif %}>Netflix</option>
+  </select>
 
   <select name="status">
     <option value="">Todos status</option>
