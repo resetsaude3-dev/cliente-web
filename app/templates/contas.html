@@ -67,6 +67,30 @@
 
     <div class="card">
       <h2>Lista de contas</h2>
+	  
+	  <form method="get" action="/contas" style="margin-bottom:15px; display:flex; gap:10px; flex-wrap:wrap;">
+
+        <select name="cliente_id">
+          <option value="">Todos clientes</option>
+          {% for c in clientes %}
+            <option value="{{ c.id }}" {% if cliente_id == c.id %}selected{% endif %}>
+             {{ c.nome }}
+           </option>
+          {% endfor %}
+        </select>
+
+        <input type="text" name="servico" placeholder="Serviço..." value="{{ servico or '' }}">
+
+        <select name="status">
+          <option value="">Todos status</option>
+          <option value="pendente" {% if status == "pendente" %}selected{% endif %}>Pendente</option>
+          <option value="paga" {% if status == "paga" %}selected{% endif %}>Paga</option>
+          <option value="manutencao" {% if status == "manutencao" %}selected{% endif %}>Manutenção</option>
+          <option value="disponivel" {% if status == "disponivel" %}selected{% endif %}>Disponível</option>
+        </select>
+
+        <button type="submit">Filtrar</button>
+      </form>
 
       <table>
         <thead>

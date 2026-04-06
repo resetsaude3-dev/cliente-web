@@ -44,6 +44,11 @@
 
     <div class="card">
       <h2>Lista de clientes</h2>
+	  
+	  <form method="get" action="/clientes" style="margin-bottom:15px;">
+        <input type="text" name="busca" placeholder="Buscar cliente..." value="{{ busca or '' }}">
+        <button type="submit">Buscar</button>
+      </form>
 
       <table>
         <thead>

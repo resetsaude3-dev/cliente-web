@@ -353,13 +353,20 @@ def dashboard(request: Request):
 # CLIENTES
 # =========================
 @app.get("/clientes", response_class=HTMLResponse)
-def listar_clientes(request: Request):
+def listar_clientes(request: Request, busca: str = ""):
     redir = exigir_login(request)
     if redir:
         return redir
 
     db = SessionLocal()
-    clientes = db.query(Cliente).order_by(Cliente.nome.asc()).all()
+
+    query = db.query(Cliente)
+
+    if busca:
+        query = query.filter(Cliente.nome.ilike(f"%{busca}%"))
+
+    clientes = query.order_by(Cliente.nome.asc()).all()
+
     db.close()
 
     return templates.TemplateResponse(
@@ -369,7 +376,8 @@ def listar_clientes(request: Request):
             "request": request,
             "usuario": usuario_logado(request),
             "clientes": clientes,
-            "cliente_editar": None
+            "cliente_editar": None,
+            "busca": busca
         }
     )
 
@@ -462,16 +470,30 @@ def deletar_cliente(request: Request, id: int):
 # CONTAS
 # =========================
 @app.get("/contas", response_class=HTMLResponse)
-def listar_contas(request: Request):
+def listar_contas(
+    request: Request,
+    cliente_id: int = None,
+    servico: str = "",
+    status: str = ""
+):
     redir = exigir_login(request)
     if redir:
         return redir
 
     db = SessionLocal()
 
-    contas = db.query(Conta).options(
-        joinedload(Conta.cliente)
-    ).order_by(Conta.data_vencimento.asc()).all()
+    query = db.query(Conta).options(joinedload(Conta.cliente))
+
+    if cliente_id:
+        query = query.filter(Conta.cliente_id == cliente_id)
+
+    if servico:
+        query = query.filter(Conta.servico.ilike(f"%{servico}%"))
+
+    if status:
+        query = query.filter(Conta.status == status)
+
+    contas = query.order_by(Conta.data_vencimento.asc()).all()
 
     clientes = db.query(Cliente).order_by(Cliente.nome.asc()).all()
 
@@ -485,7 +507,10 @@ def listar_contas(request: Request):
             "usuario": usuario_logado(request),
             "contas": contas,
             "clientes": clientes,
-            "conta_editar": None
+            "conta_editar": None,
+            "cliente_id": cliente_id,
+            "servico": servico,
+            "status": status
         }
     )
 
