@@ -1291,8 +1291,8 @@ def enviar_cobrancas_automatico():
         "enviados": enviados,
         "erros": erros
     }
-[20:10, 06/04/2026] Planettv: https://cliente-web-1-74wf.onrender.com/enviar-cobrancas-automatico
-[20:22, 06/04/2026] Planettv: @app.get("/enviar-cobrancas-automatico")
+
+@app.get("/enviar-cobrancas-automatico")
 def enviar_cobrancas_automatico():
     db = SessionLocal()
 
