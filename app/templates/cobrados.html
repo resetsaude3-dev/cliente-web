@@ -1,0 +1,17 @@
+<h2>Clientes cobrados</h2>
+
+<table>
+  <tr>
+    <th>Cliente</th>
+    <th>Serviço</th>
+    <th>Valor</th>
+  </tr>
+
+  {% for conta in contas %}
+  <tr>
+    <td>{{ conta.cliente.nome }}</td>
+    <td>{{ conta.servico }}</td>
+    <td>R$ {{ conta.valor }}</td>
+  </tr>
+  {% endfor %}
+</table>

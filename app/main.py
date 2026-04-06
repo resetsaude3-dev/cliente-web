@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy.orm import joinedload
 from passlib.context import CryptContext
+from urllib.parse import quote
 
 from app.database import Base, engine, SessionLocal
 from app.models import Usuario, Cliente, Conta
@@ -1016,3 +1017,58 @@ def deletar_usuario(request: Request, id: int):
 
     db.close()
     return RedirectResponse(url="/usuarios", status_code=303)
+    
+@app.get("/cobrar/{id}")
+def cobrar_cliente(id: int):
+    db = SessionLocal()
+
+    conta = db.query(Conta).filter(Conta.id == id).first()
+
+    if not conta or not conta.cliente:
+        db.close()
+        return RedirectResponse("/contas", status_code=303)
+
+    # 🔥 MARCA COMO COBRADO
+    conta.status = "cobrado"
+    db.commit()
+
+    telefone = conta.cliente.telefone
+
+    mensagem = f"""
+Olá {conta.cliente.nome},
+
+Sua conta ({conta.servico}) venceu em {conta.data_vencimento}.
+
+Valor: R$ {conta.valor}
+
+Por favor, regularize o pagamento.
+"""
+
+    mensagem_formatada = quote(mensagem)
+
+    db.close()
+
+    return RedirectResponse(
+        f"https://wa.me/{telefone}?text={mensagem_formatada}",
+        status_code=302
+    )
+    
+@app.get("/cobrados", response_class=HTMLResponse)
+def cobrados(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    db = SessionLocal()
+
+    contas = db.query(Conta).filter(Conta.status == "cobrado").all()
+
+    db.close()
+
+    return templates.TemplateResponse(
+        "cobrados.html",
+        {
+            "request": request,
+            "contas": contas
+        }
+    )
