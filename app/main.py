@@ -1053,6 +1053,26 @@ Por favor, regularize o pagamento.
         status_code=302
     )
     
-@app.get("/cobrados")
-def cobrados():
-    return {"ok": "funcionando"}
+@app.get("/cobrados", response_class=HTMLResponse)
+def cobrados(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    db = SessionLocal()
+
+    contas = db.query(Conta).options(joinedload(Conta.cliente)).filter(
+        Conta.status == "cobrado"
+    ).all()
+
+    db.close()
+
+ return templates.TemplateResponse(
+    request,
+    "cobrados.html",
+    {
+        "request": request,
+        "usuario": usuario_logado(request),
+        "contas": contas
+    }
+)
