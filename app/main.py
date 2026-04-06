@@ -1140,25 +1140,35 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
 
     db = SessionLocal()
 
-    conta = db.query(Conta).options(joinedload(Conta.cliente)).filter(Conta.id == conta_id).first()
+    conta = db.query(Conta).options(
+        joinedload(Conta.cliente)
+    ).filter(Conta.id == conta_id).first()
 
     if not conta or not conta.cliente:
         db.close()
         return RedirectResponse(url="/cobrancas", status_code=303)
-
-    import os, requests
 
     token = os.getenv("WHATSAPP_TOKEN")
     phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
 
     telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
 
+    if not telefone:
+        db.close()
+        return RedirectResponse(url="/cobrancas", status_code=303)
+
     if not telefone.startswith("55"):
         telefone = "55" + telefone
 
-    mensagem = f"Olá {conta.cliente.nome}, referente ao serviço {conta.servico} (Usuário: {conta.login}), valor R$ {conta.valor}"
+    mensagem = (
+        f"Olá {conta.cliente.nome}, tudo bem?\n\n"
+        f"Serviço: {conta.servico}\n"
+        f"Usuário: {conta.login or '-'}\n"
+        f"Valor: R$ {float(conta.valor or 0):.2f}\n\n"
+        f"Por favor, regularize o pagamento."
+    )
 
-    url = f"https://graph.facebook.com/v23.0/{phone_id}/messages"
+    url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -1174,10 +1184,12 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
         }
     }
 
-    requests.post(url, headers=headers, json=data)
+    response = requests.post(url, headers=headers, json=data, timeout=30)
+    print(response.status_code, response.text)
 
-    conta.status = "cobrado"
-    db.commit()
+    if response.ok:
+        conta.status = "cobrado"
+        db.commit()
+
     db.close()
-
     return RedirectResponse(url="/cobrados", status_code=303)
