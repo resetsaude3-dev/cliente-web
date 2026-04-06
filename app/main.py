@@ -1065,10 +1065,12 @@ def cobrados(request: Request):
 
     db.close()
 
-    return templates.TemplateResponse(
-        "cobrados.html",
-        {
-            "request": request,
-            "contas": contas
-        }
-    )
+ return templates.TemplateResponse(
+    request,
+    "cobrados.html",
+    {
+        "request": request,
+        "usuario": usuario_logado(request),
+        "contas": contas
+    }
+)
