@@ -1,20 +1,18 @@
 from datetime import date, datetime, timedelta
+from urllib.parse import quote
+import json
+from io import BytesIO
 
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy.orm import joinedload
 from passlib.context import CryptContext
-from urllib.parse import quote
 
 from app.database import Base, engine, SessionLocal
 from app.models import Usuario, Cliente, Conta
-
-import json
-from io import BytesIO
-from fastapi.responses import StreamingResponse
 
 
 app = FastAPI()
@@ -229,6 +227,9 @@ def home(request: Request):
     return RedirectResponse(url="/dashboard", status_code=302)
 
 
+# =========================
+# FUNÇÃO AUXILIAR DE COBRANÇAS
+# =========================
 def montar_cobrancas_pendentes(db):
     hoje = date.today()
 
@@ -301,7 +302,6 @@ def montar_cobrancas_pendentes(db):
 # =========================
 # DASHBOARD
 # =========================
-
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):
     redir = exigir_login(request)
@@ -561,7 +561,6 @@ def editar_conta_form(request: Request, id: int):
     ).order_by(Conta.data_vencimento.asc()).all()
 
     clientes = db.query(Cliente).order_by(Cliente.nome.asc()).all()
-
     conta_editar = db.query(Conta).filter(Conta.id == id).first()
 
     db.close()
@@ -809,7 +808,8 @@ def pagina_cobrancas(request: Request):
         {
             "request": request,
             "usuario": usuario_logado(request),
-            "cobrancas_pendentes": cobrancas_pendentes
+            "cobrancas_pendentes": cobrancas_pendentes,
+            "contas": cobrancas_pendentes
         }
     )
 
@@ -833,7 +833,6 @@ def pagar(request: Request, payload: BaixarCobranca):
         return redir
 
     db = SessionLocal()
-
     data = datetime.strptime(payload.data_vencimento, "%Y-%m-%d").date()
 
     contas = db.query(Conta).filter(
@@ -849,7 +848,83 @@ def pagar(request: Request, payload: BaixarCobranca):
     db.close()
 
     return {"ok": True}
-    
+
+
+@app.get("/cobrar/{conta_id}")
+def cobrar(conta_id: int, request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    db = SessionLocal()
+
+    conta = db.query(Conta).options(
+        joinedload(Conta.cliente)
+    ).filter(Conta.id == conta_id).first()
+
+    if not conta:
+        db.close()
+        return RedirectResponse(url="/cobrancas", status_code=303)
+
+    conta.status = "cobrado"
+    db.commit()
+
+    telefone = ""
+    if conta.cliente and conta.cliente.telefone:
+        telefone = "".join(filter(str.isdigit, conta.cliente.telefone))
+        if telefone and not telefone.startswith("55"):
+            telefone = "55" + telefone
+
+    mensagem = (
+        f"Olá {conta.cliente.nome if conta.cliente else ''},\n\n"
+        f"Sua conta ({conta.servico}) venceu em {conta.data_vencimento}.\n\n"
+        f"Valor: R$ {float(conta.valor or 0):.2f}\n\n"
+        f"Por favor, regularize o pagamento."
+    )
+
+    mensagem_formatada = quote(mensagem)
+
+    db.close()
+
+    if telefone:
+        return RedirectResponse(
+            url=f"https://wa.me/{telefone}?text={mensagem_formatada}",
+            status_code=302
+        )
+
+    return RedirectResponse(url="/cobrados", status_code=303)
+
+
+@app.get("/cobrados", response_class=HTMLResponse)
+def cobrados(request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    db = SessionLocal()
+
+    contas = db.query(Conta).options(
+        joinedload(Conta.cliente)
+    ).filter(
+        Conta.status == "cobrado"
+    ).all()
+
+    db.close()
+
+    return templates.TemplateResponse(
+        request,
+        "cobrados.html",
+        {
+            "request": request,
+            "usuario": usuario_logado(request),
+            "contas": contas
+        }
+    )
+
+
+# =========================
+# BACKUP
+# =========================
 @app.get("/backup")
 def gerar_backup(request: Request):
     redir = exigir_login(request)
@@ -912,7 +987,11 @@ def gerar_backup(request: Request):
             "Content-Disposition": f'attachment; filename="{nome_arquivo}"'
         }
     )
-    
+
+
+# =========================
+# USUARIOS
+# =========================
 @app.get("/usuarios", response_class=HTMLResponse)
 def listar_usuarios(request: Request):
     redir = exigir_login(request)
@@ -1016,86 +1095,3 @@ def deletar_usuario(request: Request, id: int):
 
     db.close()
     return RedirectResponse(url="/usuarios", status_code=303)
-    
-@app.get("/cobrar/{id}")
-def cobrar_cliente(id: int):
-    db = SessionLocal()
-
-    conta = db.query(Conta).filter(Conta.id == id).first()
-
-    if not conta or not conta.cliente:
-        db.close()
-        return RedirectResponse("/contas", status_code=303)
-
-    # 🔥 MARCA COMO COBRADO
-    conta.status = "cobrado"
-    db.commit()
-
-    telefone = conta.cliente.telefone
-
-    mensagem = f"""
-Olá {conta.cliente.nome},
-
-Sua conta ({conta.servico}) venceu em {conta.data_vencimento}.
-
-Valor: R$ {conta.valor}
-
-Por favor, regularize o pagamento.
-"""
-
-    mensagem_formatada = quote(mensagem)
-
-    db.close()
-
-    return RedirectResponse(
-        f"https://wa.me/{telefone}?text={mensagem_formatada}",
-        status_code=302
-    )
-    
-@app.get("/cobrados", response_class=HTMLResponse)
-def cobrados(request: Request):
-    redir = exigir_login(request)
-    if redir:
-        return redir
-
-    db = SessionLocal()
-
-    contas = db.query(Conta).options(
-        joinedload(Conta.cliente)
-    ).filter(
-        Conta.status == "cobrado"
-    ).all()
-
-    db.close()
-
-    return templates.TemplateResponse(
-        "cobrados.html",
-        {
-            "request": request,
-            "contas": contas
-        }
-    )
-    
-@app.get("/cobrar/{conta_id}")
-def cobrar(conta_id: int, request: Request):
-    db = SessionLocal()
-
-    conta = db.query(Conta).get(conta_id)
-
-    if conta:
-        conta.status = "cobrado"
-        db.commit()
-
-    telefone = conta.cliente.telefone
-
-    mensagem = f"Olá, referente ao pagamento de {conta.servico} no valor de R$ {conta.valor}"
-    
-    from urllib.parse import quote
-    mensagem_formatada = quote(mensagem)
-
-    db.close()
-
-    return RedirectResponse(
-        f"https://wa.me/{telefone}?text={mensagem_formatada}",
-        status_code=302
-    )
