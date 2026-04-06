@@ -100,6 +100,7 @@
       <table>
         <thead>
           <tr>
+		    <th>ID</th>
             <th>Cliente</th>
             <th>Serviço</th>
             <th>Login</th>
@@ -113,7 +114,8 @@
         <tbody>
           {% for conta in contas %}
           <tr>
-            <td>{{ conta.cliente.nome if conta.cliente else '-' }}</td>
+            <td>{{ conta.id }}</td>
+			<td>{{ conta.cliente.nome if conta.cliente else '-' }}</td>
             <td>{{ conta.servico }}</td>
             <td>{{ conta.login or '' }}</td>
             <td>{{ conta.perfil or '' }}</td>
