@@ -472,7 +472,7 @@ def deletar_cliente(request: Request, id: int):
 @app.get("/contas", response_class=HTMLResponse)
 def listar_contas(
     request: Request,
-    cliente_id: int = None,
+    cliente_id: str = "",
     servico: str = "",
     status: str = ""
 ):
@@ -484,8 +484,8 @@ def listar_contas(
 
     query = db.query(Conta).options(joinedload(Conta.cliente))
 
-    if cliente_id:
-        query = query.filter(Conta.cliente_id == cliente_id)
+    if cliente_id and cliente_id.isdigit():
+        query = query.filter(Conta.cliente_id == int(cliente_id))
 
     if servico:
         query = query.filter(Conta.servico.ilike(f"%{servico}%"))
@@ -494,7 +494,6 @@ def listar_contas(
         query = query.filter(Conta.status == status)
 
     contas = query.order_by(Conta.data_vencimento.asc()).all()
-
     clientes = db.query(Cliente).order_by(Cliente.nome.asc()).all()
 
     db.close()

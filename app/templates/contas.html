@@ -73,7 +73,7 @@
         <select name="cliente_id">
           <option value="">Todos clientes</option>
           {% for c in clientes %}
-            <option value="{{ c.id }}" {% if cliente_id == c.id %}selected{% endif %}>
+            <option value="{{ c.id }}" {% if cliente_id|string == c.id|string %}selected{% endif %}>
              {{ c.nome }}
            </option>
           {% endfor %}
