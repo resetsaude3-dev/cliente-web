@@ -46,7 +46,7 @@
                         <td>{{ conta.total_contas }}</td>
                         <td>
                             {% if conta.whatsapp %}
-                                <a href="{{ conta.whatsapp }}" target="_blank">WhatsApp</a>
+                                <a href="{{ conta.cobrar_url }}" class="btn success">Cobrar cliente</a>
                             {% else %}
                                 <span>Sem telefone</span>
                             {% endif %}

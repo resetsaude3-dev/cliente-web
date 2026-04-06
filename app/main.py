@@ -276,11 +276,24 @@ def montar_cobrancas_pendentes(db):
     resultado = []
 
     for item in agrupadas.values():
+        linhas = []
+
+        for c in item["contas_detalhes"]:
+            linha = f"{c['servico']}"
+
+            if c["login"]:
+                linha += f"\nUsuário: {c['login']}"
+
+            if c["perfil"]:
+                linha += f"\nPerfil: {c['perfil']}"
+
+            linhas.append(linha)
+
         mensagem = (
             f"Olá {item['cliente_nome']}, tudo bem?\n\n"
-            f"Os seguintes serviços estão vencidos:\n"
-            f"- " + "\n- ".join(item["servicos"]) + "\n\n"
-            f"Valor total: R$ {item['valor_total']:.2f}\n\n"
+            f"Os seguintes serviços estão vencidos:\n\n"
+            + "\n\n".join(linhas)
+            + f"\n\nValor total: R$ {item['valor_total']:.2f}\n\n"
             f"Me avisa após o pagamento."
         )
 
@@ -293,6 +306,7 @@ def montar_cobrancas_pendentes(db):
             whatsapp = f"https://wa.me/{telefone}?text={quote(mensagem)}"
 
         item["whatsapp"] = whatsapp
+        item["cobrar_url"] = f"/cobrar-cliente/{item['cliente_id']}/{item['data_vencimento']}"
         resultado.append(item)
 
     resultado.sort(key=lambda x: (x["data_vencimento"], x["cliente_nome"].lower()))
@@ -850,45 +864,65 @@ def pagar(request: Request, payload: BaixarCobranca):
     return {"ok": True}
 
 
-@app.get("/cobrar/{conta_id}")
-def cobrar(conta_id: int, request: Request):
+@app.get("/cobrar-cliente/{cliente_id}/{data_vencimento}")
+def cobrar_cliente_agrupado(cliente_id: int, data_vencimento: str, request: Request):
     redir = exigir_login(request)
     if redir:
         return redir
 
     db = SessionLocal()
 
-    conta = db.query(Conta).options(
-        joinedload(Conta.cliente)
-    ).filter(Conta.id == conta_id).first()
+    data = datetime.strptime(data_vencimento, "%Y-%m-%d").date()
 
-    if not conta:
+    contas = db.query(Conta).options(
+        joinedload(Conta.cliente)
+    ).filter(
+        Conta.cliente_id == cliente_id,
+        Conta.data_vencimento == data,
+        Conta.status == "pendente"
+    ).all()
+
+    if not contas:
         db.close()
         return RedirectResponse(url="/cobrancas", status_code=303)
 
-    conta.status = "cobrado"
-    db.commit()
-
+    cliente = contas[0].cliente
     telefone = ""
-    if conta.cliente and conta.cliente.telefone:
-        telefone = "".join(filter(str.isdigit, conta.cliente.telefone))
+
+    if cliente and cliente.telefone:
+        telefone = "".join(filter(str.isdigit, cliente.telefone))
         if telefone and not telefone.startswith("55"):
             telefone = "55" + telefone
 
-    mensagem = (
-        f"Olá {conta.cliente.nome if conta.cliente else ''},\n\n"
-        f"Sua conta ({conta.servico}) venceu em {conta.data_vencimento}.\n\n"
-        f"Valor: R$ {float(conta.valor or 0):.2f}\n\n"
-        f"Por favor, regularize o pagamento."
-    )
+    linhas = []
+    valor_total = 0.0
 
-    mensagem_formatada = quote(mensagem)
+    for conta in contas:
+        conta.status = "cobrado"
+        valor_total += float(conta.valor or 0)
 
+        linha = f"{conta.servico}"
+        if conta.login:
+            linha += f"\nUsuário: {conta.login}"
+        if conta.perfil:
+            linha += f"\nPerfil: {conta.perfil}"
+
+        linhas.append(linha)
+
+    db.commit()
     db.close()
+
+    mensagem = (
+        f"Olá {cliente.nome if cliente else ''}, tudo bem?\n\n"
+        f"Os seguintes serviços estão vencidos:\n\n"
+        + "\n\n".join(linhas)
+        + f"\n\nValor total: R$ {valor_total:.2f}\n\n"
+        f"Me avisa após o pagamento."
+    )
 
     if telefone:
         return RedirectResponse(
-            url=f"https://wa.me/{telefone}?text={mensagem_formatada}",
+            url=f"https://wa.me/{telefone}?text={quote(mensagem)}",
             status_code=302
         )
 
