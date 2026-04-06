@@ -1,5 +1,4 @@
 from datetime import date, datetime, timedelta
-from urllib.parse import quote
 
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -9,7 +8,6 @@ from pydantic import BaseModel
 from sqlalchemy.orm import joinedload
 from passlib.context import CryptContext
 from urllib.parse import quote
-from fastapi.responses import RedirectResponse
 
 from app.database import Base, engine, SessionLocal
 from app.models import Usuario, Cliente, Conta
@@ -1062,7 +1060,9 @@ def cobrados(request: Request):
 
     db = SessionLocal()
 
-    contas = db.query(Conta).filter(
+    contas = db.query(Conta).options(
+        joinedload(Conta.cliente)
+    ).filter(
         Conta.status == "cobrado"
     ).all()
 
