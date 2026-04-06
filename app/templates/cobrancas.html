@@ -3,56 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cobrados</title>
+    <title>Cobranças</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+
 <div class="container">
 
     <div class="topo">
-        <h1>Cobrados</h1>
+        <h1>Cobranças</h1>
+
         <div class="menu">
             <a href="/dashboard">Dashboard</a>
             <a href="/clientes">Clientes</a>
             <a href="/contas">Contas</a>
+            <a href="/disponiveis">Disponíveis</a>
+            <a href="/manutencao">Manutenção</a>
             <a href="/cobrancas">Cobranças</a>
             <a href="/cobrados">Cobrados</a>
+            <a href="/logout">Sair</a>
         </div>
     </div>
 
-    <div class="card">
-        <h2>Lista</h2>
+    <div class="cards">
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Cliente</th>
-                    <th>Serviço</th>
-                    <th>Login</th>
-                    <th>Valor</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
+        {% for conta in contas %}
+        <div class="card card-interno">
 
-            <tbody>
-                {% for conta in contas %}
-                <tr>
-                    <td>{{ conta.cliente.nome if conta.cliente else "-" }}</td>
-                    <td>{{ conta.servico }}</td>
-                    <td>{{ conta.login }}</td>
-                    <td>R$ {{ "%.2f"|format(conta.valor) }}</td>
-                    <td>{{ conta.status }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+            <h3>{{ conta.servico }}</h3>
 
-        {% if not contas %}
-        <p>Nenhum registro ainda</p>
-        {% endif %}
+            <p><strong>Cliente:</strong> {{ conta.cliente.nome }}</p>
+            <p><strong>Login:</strong> {{ conta.login or '-' }}</p>
+            <p><strong>Valor:</strong> R$ {{ '%.2f'|format(conta.valor or 0) }}</p>
+
+            <div class="acoes">
+                <!-- BOTÃO CORRETO -->
+                <a href="/cobrar/{{ conta.id }}" class="btn-cobrar">Cobrar cliente</a>
+            </div>
+
+        </div>
+        {% endfor %}
 
     </div>
 
 </div>
+
 </body>
 </html>

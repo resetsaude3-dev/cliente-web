@@ -449,3 +449,17 @@ textarea {
         font-size: 20px;
     }
 }
+
+.btn-cobrar {
+    display: inline-block;
+    padding: 10px 15px;
+    background: #16a34a;
+    color: white;
+    border-radius: 8px;
+    text-decoration: none;
+    margin-top: 10px;
+}
+
+.btn-cobrar:hover {
+    background: #15803d;
+}
