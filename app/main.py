@@ -2,6 +2,8 @@ from datetime import date, datetime, timedelta
 from urllib.parse import quote
 import json
 from io import BytesIO
+import requests
+import os
 
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -1129,3 +1131,53 @@ def deletar_usuario(request: Request, id: int):
 
     db.close()
     return RedirectResponse(url="/usuarios", status_code=303)
+    
+@app.get("/enviar-cobranca-oficial/{conta_id}")
+def enviar_cobranca_oficial(conta_id: int, request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
+    db = SessionLocal()
+
+    conta = db.query(Conta).options(joinedload(Conta.cliente)).filter(Conta.id == conta_id).first()
+
+    if not conta or not conta.cliente:
+        db.close()
+        return RedirectResponse(url="/cobrancas", status_code=303)
+
+    import os, requests
+
+    token = os.getenv("WHATSAPP_TOKEN")
+    phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+
+    telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
+
+    if not telefone.startswith("55"):
+        telefone = "55" + telefone
+
+    mensagem = f"Olá {conta.cliente.nome}, referente ao serviço {conta.servico} (Usuário: {conta.login}), valor R$ {conta.valor}"
+
+    url = f"https://graph.facebook.com/v23.0/{phone_id}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "messaging_product": "whatsapp",
+        "to": telefone,
+        "type": "text",
+        "text": {
+            "body": mensagem
+        }
+    }
+
+    requests.post(url, headers=headers, json=data)
+
+    conta.status = "cobrado"
+    db.commit()
+    db.close()
+
+    return RedirectResponse(url="/cobrados", status_code=303)
