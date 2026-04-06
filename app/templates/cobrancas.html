@@ -7,12 +7,10 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-
 <div class="container">
 
     <div class="topo">
         <h1>Cobranças</h1>
-
         <div class="menu">
             <a href="/dashboard">Dashboard</a>
             <a href="/clientes">Clientes</a>
@@ -25,28 +23,43 @@
         </div>
     </div>
 
-    <div class="cards">
+    <div class="card">
+        <h2>Lista de cobranças pendentes</h2>
 
-        {% for conta in contas %}
-        <div class="card card-interno">
-
-            <h3>{{ conta.servico }}</h3>
-
-            <p><strong>Cliente:</strong> {{ conta.cliente.nome }}</p>
-            <p><strong>Login:</strong> {{ conta.login or '-' }}</p>
-            <p><strong>Valor:</strong> R$ {{ '%.2f'|format(conta.valor or 0) }}</p>
-
-            <div class="acoes">
-                <!-- BOTÃO CORRETO -->
-                <a href="/cobrar/{{ conta.id }}" class="btn-cobrar">Cobrar cliente</a>
-            </div>
-
-        </div>
-        {% endfor %}
-
+        {% if contas %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Vencimento</th>
+                        <th>Total</th>
+                        <th>Qtd. contas</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for conta in contas %}
+                    <tr>
+                        <td>{{ conta.cliente_nome }}</td>
+                        <td>{{ conta.data_vencimento }}</td>
+                        <td>R$ {{ "%.2f"|format(conta.valor_total) }}</td>
+                        <td>{{ conta.total_contas }}</td>
+                        <td>
+                            {% if conta.whatsapp %}
+                                <a href="{{ conta.whatsapp }}" target="_blank">WhatsApp</a>
+                            {% else %}
+                                <span>Sem telefone</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>Nenhuma cobrança pendente no momento.</p>
+        {% endif %}
     </div>
 
 </div>
-
 </body>
 </html>
