@@ -1298,12 +1298,12 @@ def enviar_cobrancas_automatico():
 
     hoje = date.today()
 
-    contas = db.query(Conta).options(
-        joinedload(Conta.cliente)
-    ).filter(
-        Conta.status == "pendente",
-        Conta.data_vencimento == hoje
-    ).all()
+   contas = db.query(Conta).options(
+    joinedload(Conta.cliente)
+).filter(
+    Conta.status == "pendente",
+    Conta.data_vencimento <= hoje
+).all()
 
     token = os.getenv("WHATSAPP_TOKEN")
     phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
