@@ -1215,7 +1215,7 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
         db.close()
         return HTMLResponse(f"❌ Erro interno: {str(e)}", status_code=500)
         
-@@app.get("/enviar-cobrancas-automatico")
+@app.get("/enviar-cobrancas-automatico")
 def enviar_cobrancas_automatico():
     db = SessionLocal()
 
