@@ -1215,7 +1215,7 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
         db.close()
         return HTMLResponse(f"❌ Erro interno: {str(e)}", status_code=500)
         
-@app.get("/enviar-cobrancas-automatico")
+@@app.get("/enviar-cobrancas-automatico")
 def enviar_cobrancas_automatico():
     db = SessionLocal()
 
@@ -1225,7 +1225,7 @@ def enviar_cobrancas_automatico():
         joinedload(Conta.cliente)
     ).filter(
         Conta.status == "pendente",
-        Conta.data_vencimento == hoje
+        Conta.data_vencimento <= hoje
     ).all()
 
     token = os.getenv("WHATSAPP_TOKEN")
@@ -1243,14 +1243,15 @@ def enviar_cobrancas_automatico():
         if not telefone.startswith("55"):
             telefone = "55" + telefone
 
-        mensagem = (
-            f"Olá {conta.cliente.nome}, tudo bem?\n\n"
-            f"Seu vencimento é hoje.\n\n"
-            f"Serviço: {conta.servico}\n"
-            f"Usuário: {conta.login or '-'}\n"
-            f"Valor: R$ {float(conta.valor or 0):.2f}\n\n"
-            f"Por favor, regularize o pagamento."
-        )
+        mensagem = f"""
+Olá {conta.cliente.nome}, tudo bem?
+
+Serviço: {conta.servico}
+Usuário: {conta.login}
+Valor: R$ {conta.valor}
+
+Por favor, regularize o pagamento.
+"""
 
         url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
 
@@ -1263,14 +1264,11 @@ def enviar_cobrancas_automatico():
             "messaging_product": "whatsapp",
             "to": telefone,
             "type": "text",
-            "text": {
-                "body": mensagem
-            }
+            "text": {"body": mensagem}
         }
 
         try:
-            response = requests.post(url, headers=headers, json=data, timeout=30)
-            print("CONTA:", conta.id, "STATUS:", response.status_code, "RESPOSTA:", response.text)
+            response = requests.post(url, headers=headers, json=data)
 
             if response.ok:
                 conta.status = "cobrado"
@@ -1279,84 +1277,7 @@ def enviar_cobrancas_automatico():
                 erros += 1
 
         except Exception as e:
-            print("ERRO CONTA:", conta.id, str(e))
-            erros += 1
-
-    db.commit()
-    db.close()
-
-    return {
-        "ok": True,
-        "data": str(hoje),
-        "enviados": enviados,
-        "erros": erros
-    }
-
-@app.get("/enviar-cobrancas-automatico")
-def enviar_cobrancas_automatico():
-    db = SessionLocal()
-
-    hoje = date.today()
-
-   contas = db.query(Conta).options(
-    joinedload(Conta.cliente)
-).filter(
-    Conta.status == "pendente",
-    Conta.data_vencimento <= hoje
-).all()
-
-    token = os.getenv("WHATSAPP_TOKEN")
-    phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
-
-    enviados = 0
-    erros = 0
-
-    for conta in contas:
-        if not conta.cliente or not conta.cliente.telefone:
-            continue
-
-        telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
-
-        if not telefone.startswith("55"):
-            telefone = "55" + telefone
-
-        mensagem = (
-            f"Olá {conta.cliente.nome}, tudo bem?\n\n"
-            f"Seu vencimento é hoje.\n\n"
-            f"Serviço: {conta.servico}\n"
-            f"Usuário: {conta.login or '-'}\n"
-            f"Valor: R$ {float(conta.valor or 0):.2f}\n\n"
-            f"Por favor, regularize o pagamento."
-        )
-
-        url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
-
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
-
-        data = {
-            "messaging_product": "whatsapp",
-            "to": telefone,
-            "type": "text",
-            "text": {
-                "body": mensagem
-            }
-        }
-
-        try:
-            response = requests.post(url, headers=headers, json=data, timeout=30)
-            print("CONTA:", conta.id, "STATUS:", response.status_code, "RESPOSTA:", response.text)
-
-            if response.ok:
-                conta.status = "cobrado"
-                enviados += 1
-            else:
-                erros += 1
-
-        except Exception as e:
-            print("ERRO CONTA:", conta.id, str(e))
+            print("ERRO:", e)
             erros += 1
 
     db.commit()
