@@ -1131,7 +1131,11 @@ def deletar_usuario(request: Request, id: int):
 
     db.close()
     return RedirectResponse(url="/usuarios", status_code=303)
-    
+
+
+# =========================
+# WHATSAPP OFICIAL
+# =========================
 @app.get("/enviar-cobranca-oficial/{conta_id}")
 def enviar_cobranca_oficial(conta_id: int, request: Request):
     redir = exigir_login(request)
@@ -1226,12 +1230,23 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
     except Exception as e:
         db.close()
         return HTMLResponse(f"❌ Erro interno: {str(e)}", status_code=500)
-  
+
+
 @app.get("/enviar-cobrancas-automatico")
 def enviar_cobrancas_automatico():
     db = SessionLocal()
 
     hoje = date.today()
+
+    token = os.getenv("WHATSAPP_TOKEN")
+    phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+
+    if not token or not phone_id:
+        db.close()
+        return {
+            "ok": False,
+            "erro": "WHATSAPP_TOKEN ou WHATSAPP_PHONE_NUMBER_ID não configurado no Render"
+        }
 
     contas = db.query(Conta).options(
         joinedload(Conta.cliente)
@@ -1240,19 +1255,20 @@ def enviar_cobrancas_automatico():
         Conta.data_vencimento <= hoje
     ).all()
 
-    token = os.getenv("WHATSAPP_TOKEN")
-    phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
-
     enviados = 0
     erros = 0
 
     for conta in contas:
         if not conta.cliente or not conta.cliente.telefone:
+            print("❌ CONTA SEM CLIENTE OU TELEFONE:", conta.id)
+            erros += 1
             continue
 
         telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
 
         if not telefone:
+            print("❌ TELEFONE VAZIO:", conta.id)
+            erros += 1
             continue
 
         if not telefone.startswith("55"):
@@ -1297,7 +1313,13 @@ def enviar_cobrancas_automatico():
 
         try:
             response = requests.post(url, headers=headers, json=data, timeout=30)
-            print("CONTA:", conta.id, "STATUS:", response.status_code, "RESPOSTA:", response.text)
+
+            print("====================================")
+            print("CONTA:", conta.id)
+            print("TELEFONE:", telefone)
+            print("STATUS:", response.status_code)
+            print("RESPOSTA:", response.text)
+            print("====================================")
 
             if response.ok:
                 conta.status = "cobrado"
@@ -1306,7 +1328,7 @@ def enviar_cobrancas_automatico():
                 erros += 1
 
         except Exception as e:
-            print("ERRO CONTA:", conta.id, str(e))
+            print("❌ ERRO EXCEPTION CONTA:", conta.id, str(e))
             erros += 1
 
     db.commit()
