@@ -5,12 +5,12 @@ from io import BytesIO
 import requests
 import os
 
-from fastapi import FastAPI, Request, Form,
+from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy.orm import joinedload,
+from sqlalchemy.orm import joinedload
 from passlib.context import CryptContext
 
 from app.database import Base, engine, SessionLocal
