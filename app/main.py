@@ -1131,11 +1131,7 @@ def deletar_usuario(request: Request, id: int):
 
     db.close()
     return RedirectResponse(url="/usuarios", status_code=303)
-
-
-# =========================
-# WHATSAPP OFICIAL
-# =========================
+    
 @app.get("/enviar-cobranca-oficial/{conta_id}")
 def enviar_cobranca_oficial(conta_id: int, request: Request):
     redir = exigir_login(request)
@@ -1176,13 +1172,15 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
     if not telefone.startswith("55"):
         telefone = "55" + telefone
 
-    nome_cliente = str(conta.cliente.nome or "-")
-    servico = str(conta.servico or "-")
-    usuario = str(conta.login or "-")
-    valor = f"{float(conta.valor or 0):.2f}"
-    vencimento = conta.data_vencimento.strftime("%d/%m/%Y") if conta.data_vencimento else "-"
+    mensagem = (
+        f"Olá {conta.cliente.nome}, tudo bem?\n\n"
+        f"Serviço: {conta.servico}\n"
+        f"Usuário: {conta.login or '-'}\n"
+        f"Valor: R$ {float(conta.valor or 0):.2f}\n\n"
+        f"Por favor, regularize o pagamento."
+    )
 
-    url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
+    url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -1192,30 +1190,16 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
     data = {
         "messaging_product": "whatsapp",
         "to": telefone,
-        "type": "template",
-        "template": {
-            "name": "cobranca_vencimento",
-            "language": {
-                "code": "pt_BR"
-            },
-            "components": [
-                {
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": nome_cliente},
-                        {"type": "text", "text": servico},
-                        {"type": "text", "text": usuario},
-                        {"type": "text", "text": valor},
-                        {"type": "text", "text": vencimento}
-                    ]
-                }
-            ]
+        "type": "text",
+        "text": {
+            "body": mensagem
         }
     }
 
     try:
         response = requests.post(url, headers=headers, json=data, timeout=30)
-        print("CONTA:", conta.id, "STATUS:", response.status_code, "RESPOSTA:", response.text)
+        print("STATUS:", response.status_code)
+        print("RESPOSTA:", response.text)
 
         if response.ok:
             conta.status = "cobrado"
@@ -1230,23 +1214,12 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
     except Exception as e:
         db.close()
         return HTMLResponse(f"❌ Erro interno: {str(e)}", status_code=500)
-
-
+        
 @app.get("/enviar-cobrancas-automatico")
 def enviar_cobrancas_automatico():
     db = SessionLocal()
 
     hoje = date.today()
-
-    token = os.getenv("WHATSAPP_TOKEN")
-    phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
-
-    if not token or not phone_id:
-        db.close()
-        return {
-            "ok": False,
-            "erro": "WHATSAPP_TOKEN ou WHATSAPP_PHONE_NUMBER_ID não configurado no Render"
-        }
 
     contas = db.query(Conta).options(
         joinedload(Conta.cliente)
@@ -1255,32 +1228,32 @@ def enviar_cobrancas_automatico():
         Conta.data_vencimento <= hoje
     ).all()
 
+    token = os.getenv("WHATSAPP_TOKEN")
+    phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+
     enviados = 0
     erros = 0
 
     for conta in contas:
         if not conta.cliente or not conta.cliente.telefone:
-            print("❌ CONTA SEM CLIENTE OU TELEFONE:", conta.id)
-            erros += 1
             continue
 
         telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
 
-        if not telefone:
-            print("❌ TELEFONE VAZIO:", conta.id)
-            erros += 1
-            continue
-
         if not telefone.startswith("55"):
             telefone = "55" + telefone
 
-        nome_cliente = str(conta.cliente.nome or "-")
-        servico = str(conta.servico or "-")
-        usuario = str(conta.login or "-")
-        valor = f"{float(conta.valor or 0):.2f}"
-        vencimento = conta.data_vencimento.strftime("%d/%m/%Y") if conta.data_vencimento else "-"
+        mensagem = f"""
+Olá {conta.cliente.nome}, tudo bem?
 
-        url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
+Serviço: {conta.servico}
+Usuário: {conta.login}
+Valor: R$ {conta.valor}
+
+Por favor, regularize o pagamento.
+"""
+
+        url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
 
         headers = {
             "Authorization": f"Bearer {token}",
@@ -1290,36 +1263,12 @@ def enviar_cobrancas_automatico():
         data = {
             "messaging_product": "whatsapp",
             "to": telefone,
-            "type": "template",
-            "template": {
-                "name": "cobranca_vencimento",
-                "language": {
-                    "code": "pt_BR"
-                },
-                "components": [
-                    {
-                        "type": "body",
-                        "parameters": [
-                            {"type": "text", "text": nome_cliente},
-                            {"type": "text", "text": servico},
-                            {"type": "text", "text": usuario},
-                            {"type": "text", "text": valor},
-                            {"type": "text", "text": vencimento}
-                        ]
-                    }
-                ]
-            }
+            "type": "text",
+            "text": {"body": mensagem}
         }
 
         try:
-            response = requests.post(url, headers=headers, json=data, timeout=30)
-
-            print("====================================")
-            print("CONTA:", conta.id)
-            print("TELEFONE:", telefone)
-            print("STATUS:", response.status_code)
-            print("RESPOSTA:", response.text)
-            print("====================================")
+            response = requests.post(url, headers=headers, json=data)
 
             if response.ok:
                 conta.status = "cobrado"
@@ -1328,7 +1277,7 @@ def enviar_cobrancas_automatico():
                 erros += 1
 
         except Exception as e:
-            print("❌ ERRO EXCEPTION CONTA:", conta.id, str(e))
+            print("ERRO:", e)
             erros += 1
 
     db.commit()
@@ -1340,3 +1289,35 @@ def enviar_cobrancas_automatico():
         "enviados": enviados,
         "erros": erros
     }
+    
+@app.get("/gerar-pix/{conta_id}")
+def gerar_pix(conta_id: int, db: Session = Depends(get_db)):
+
+    conta = db.query(Conta).filter(Conta.id == conta_id).first()
+
+    if not conta:
+        return {"erro": "Conta não encontrada"}
+
+    token = os.getenv("DEFLOW_TOKEN")
+    slug = os.getenv("DEFLOW_SLUG")
+
+    url = f"https://deflow.exchange/api/links/invoice/{slug}/pay"
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "amountInCents": int(conta.valor * 100)
+    }
+
+    response = requests.post(url, json=data, headers=headers)
+
+    if response.status_code not in [200, 201]:
+        return {"erro": response.text}
+
+    resultado = response.json()
+
+    # aqui depende da resposta da deflow
+    return resultado
