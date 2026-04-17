@@ -5,15 +5,15 @@ from io import BytesIO
 import requests
 import os
 
-from fastapi import FastAPI, Request, Form, Depends
+from fastapi import FastAPI, Request, Form,
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy.orm import joinedload, Session
+from sqlalchemy.orm import joinedload,
 from passlib.context import CryptContext
 
-from app.database import Base, engine, SessionLocal, get_db
+from app.database import Base, engine, SessionLocal
 from app.models import Usuario, Cliente, Conta
 
 
@@ -1291,33 +1291,51 @@ Por favor, regularize o pagamento.
     }
     
 @app.get("/gerar-pix/{conta_id}")
-def gerar_pix(conta_id: int, db: Session = Depends(get_db)):
+def gerar_pix(conta_id: int, request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
 
-    conta = db.query(Conta).filter(Conta.id == conta_id).first()
+    db = SessionLocal()
 
-    if not conta:
-        return {"erro": "Conta não encontrada"}
+    try:
+        conta = db.query(Conta).filter(Conta.id == conta_id).first()
 
-    token = os.getenv("DEFLOW_TOKEN")
-    slug = os.getenv("DEFLOW_SLUG")
+        if not conta:
+            db.close()
+            return {"erro": "Conta não encontrada"}
 
-    url = f"https://deflow.exchange/api/links/invoice/{slug}/pay"
+        token = os.getenv("DEFLOW_TOKEN")
+        slug = os.getenv("DEFLOW_SLUG")
 
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
+        if not token or not slug:
+            db.close()
+            return {"erro": "DEFLOW_TOKEN ou DEFLOW_SLUG não configurado"}
 
-    data = {
-        "amountInCents": int(conta.valor * 100)
-    }
+        url = f"https://deflow.exchange/api/links/invoice/{slug}/pay"
 
-    response = requests.post(url, json=data, headers=headers)
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
 
-    if response.status_code not in [200, 201]:
-        return {"erro": response.text}
+        data = {
+            "amountInCents": int(float(conta.valor) * 100)
+        }
 
-    resultado = response.json()
+        response = requests.post(url, json=data, headers=headers, timeout=30)
 
-    # aqui depende da resposta da deflow
-    return resultado
+        if response.status_code not in [200, 201]:
+            erro = response.text
+            db.close()
+            return {"erro": erro}
+
+        db.close()
+        return RedirectResponse(
+            url=f"https://deflow.exchange/invoice/{slug}",
+            status_code=303
+        )
+
+    except Exception as e:
+        db.close()
+        return {"erro": str(e)}
