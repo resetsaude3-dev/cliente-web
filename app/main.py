@@ -1463,3 +1463,8 @@ for r in app.routes:
         print(r.path, r.methods)
     except Exception:
         print(r)
+        
+        
+@app.get("/teste-auto")
+def teste_auto():
+    return {"ok": True, "rota": "certa"}
