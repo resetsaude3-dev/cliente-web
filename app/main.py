@@ -26,6 +26,18 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+app = FastAPI(
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+print("ROTAS CARREGADAS:")
+for r in app.routes:
+    try:
+        print(r.path, r.methods)
+    except Exception:
+        print(r)
+
 @app.get("/", include_in_schema=False)
 def home():
     return RedirectResponse(url="/dashboard")
