@@ -1457,3 +1457,7 @@ def gerar_pix(conta_id: int, request: Request):
     except Exception as e:
         db.close()
         return {"erro": str(e)}
+        
+@app.get("/teste123")
+def teste123():
+    return {"ok": True, "rota": "teste123"}
