@@ -18,6 +18,7 @@ from app.database import Base, engine, SessionLocal
 from app.models import Usuario, Cliente, Conta
 
 print("🔥 APP INICIOU 🔥")
+print("### TESTE UNICO 999 ###")
 
 app = FastAPI(
     docs_url="/docs",
@@ -1464,7 +1465,6 @@ for r in app.routes:
     except Exception:
         print(r)
         
-        
-@app.get("/teste-auto")
+        @app.get("/teste-auto")
 def teste_auto():
-    return {"ok": True, "rota": "certa"}
+    return {"sttus": "ok"}
