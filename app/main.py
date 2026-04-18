@@ -1183,13 +1183,21 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
 
     db = SessionLocal()
 
+    print("DEBUG conta_id recebido:", conta_id)
+    print("DEBUG DATABASE_URL:", os.getenv("DATABASE_URL"))
+
+    contas_debug = db.query(Conta).all()
+    print("DEBUG ids no banco:", [c.id for c in contas_debug])
+
     conta = db.query(Conta).options(
         joinedload(Conta.cliente)
     ).filter(Conta.id == conta_id).first()
 
+    print("DEBUG conta encontrada:", conta)
+
     if not conta:
         db.close()
-        return HTMLResponse("❌ Conta não encontrada", status_code=404)
+        return HTMLResponse(f"❌ Conta não encontrada: {conta_id}", status_code=404)
 
     if not conta.cliente:
         db.close()
