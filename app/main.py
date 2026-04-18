@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy.orm import joinedload
+from sqlalchemy import text
 from passlib.context import CryptContext
 
 from app.database import Base, engine, SessionLocal
@@ -32,30 +33,35 @@ class BaixarCobranca(BaseModel):
     data_vencimento: str
 
 
-def telefone_whatsapp(telefone: str) -> str:
-    telefone = "".join(filter(str.isdigit, telefone or ""))
-    if telefone and not telefone.startswith("55"):
-        telefone = "55" + telefone
-    return telefone
+def garantir_colunas_whatsapp():
+    with engine.begin() as conn:
+        colunas = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(contas)").fetchall()]
+
+        if "whatsapp_message_id" not in colunas:
+            conn.exec_driver_sql("ALTER TABLE contas ADD COLUMN whatsapp_message_id TEXT")
+
+        if "whatsapp_status" not in colunas:
+            conn.exec_driver_sql("ALTER TABLE contas ADD COLUMN whatsapp_status TEXT")
+
+        if "whatsapp_status_at" not in colunas:
+            conn.exec_driver_sql("ALTER TABLE contas ADD COLUMN whatsapp_status_at TEXT")
 
 
-def montar_textos_agrupados(contas):
-    servicos = []
-    usuarios = []
-    valor_total = 0.0
+def salvar_message_id_nas_contas(contas, message_id: str):
+    for conta in contas:
+        conta.whatsapp_message_id = message_id
+        conta.whatsapp_status = "sent"
+        conta.whatsapp_status_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def atualizar_status_por_message_id(db, message_id: str, novo_status: str):
+    contas = db.query(Conta).filter(Conta.whatsapp_message_id == message_id).all()
 
     for conta in contas:
-        if conta.servico:
-            servicos.append(conta.servico)
-        if conta.login:
-            usuarios.append(conta.login)
-        valor_total += float(conta.valor or 0)
+        conta.whatsapp_status = novo_status
+        conta.whatsapp_status_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    servico_texto = " + ".join(servicos) if servicos else "-"
-    usuario_texto = " / ".join(usuarios) if usuarios else "-"
-    valor_texto = f"{valor_total:.2f}"
-
-    return servico_texto, usuario_texto, valor_texto
+    db.commit()
 
 
 # =========================
@@ -84,6 +90,9 @@ def exigir_login(request: Request):
 
 @app.on_event("startup")
 def criar_usuario_padrao():
+    Base.metadata.create_all(bind=engine)
+    garantir_colunas_whatsapp()
+
     db = SessionLocal()
 
     usuario = db.query(Usuario).filter(Usuario.username == "hdstore").first()
@@ -267,12 +276,12 @@ def montar_cobrancas_pendentes(db):
         Conta.status == "pendente",
         Conta.cliente_id.isnot(None),
         Conta.data_vencimento <= hoje
-    ).order_by(Conta.cliente_id.asc(), Conta.data_vencimento.asc()).all()
+    ).order_by(Conta.data_vencimento.asc()).all()
 
     agrupadas = {}
 
     for conta in contas:
-        chave = conta.cliente_id
+        chave = (conta.cliente_id, conta.data_vencimento.isoformat())
 
         nome_cliente = conta.cliente.nome if conta.cliente else "Sem nome"
         telefone_cliente = conta.cliente.telefone if conta.cliente and conta.cliente.telefone else ""
@@ -282,11 +291,12 @@ def montar_cobrancas_pendentes(db):
                 "cliente_id": conta.cliente_id,
                 "cliente_nome": nome_cliente,
                 "telefone": telefone_cliente,
+                "data_vencimento": conta.data_vencimento.isoformat(),
                 "servicos": [],
                 "contas_detalhes": [],
                 "valor_total": 0.0,
                 "total_contas": 0,
-                "datas_vencimento": []
+                "tipo": "vence_hoje" if conta.data_vencimento == hoje else "atrasada"
             }
 
         agrupadas[chave]["servicos"].append(conta.servico)
@@ -295,13 +305,10 @@ def montar_cobrancas_pendentes(db):
             "servico": conta.servico,
             "login": conta.login or "",
             "perfil": conta.perfil or "",
-            "valor": float(conta.valor or 0),
-            "data_vencimento": conta.data_vencimento.strftime("%d/%m/%Y") if conta.data_vencimento else "-"
+            "valor": float(conta.valor or 0)
         })
         agrupadas[chave]["valor_total"] += float(conta.valor or 0)
         agrupadas[chave]["total_contas"] += 1
-        if conta.data_vencimento:
-            agrupadas[chave]["datas_vencimento"].append(conta.data_vencimento)
 
     resultado = []
 
@@ -310,33 +317,36 @@ def montar_cobrancas_pendentes(db):
 
         for c in item["contas_detalhes"]:
             linha = f"{c['servico']}"
+
             if c["login"]:
                 linha += f"\nUsuário: {c['login']}"
+
             if c["perfil"]:
                 linha += f"\nPerfil: {c['perfil']}"
-            linha += f"\nVencimento: {c['data_vencimento']}"
+
             linhas.append(linha)
 
         mensagem = (
             f"Olá {item['cliente_nome']}, tudo bem?\n\n"
-            f"Os seguintes serviços estão pendentes:\n\n"
+            f"Os seguintes serviços estão vencidos:\n\n"
             + "\n\n".join(linhas)
             + f"\n\nValor total: R$ {item['valor_total']:.2f}\n\n"
             f"Me avisa após o pagamento."
         )
 
-        telefone = telefone_whatsapp(item["telefone"])
+        telefone = "".join(filter(str.isdigit, item["telefone"] or ""))
         whatsapp = None
 
         if telefone:
+            if not telefone.startswith("55"):
+                telefone = "55" + telefone
             whatsapp = f"https://wa.me/{telefone}?text={quote(mensagem)}"
 
         item["whatsapp"] = whatsapp
-        item["cobrar_url"] = f"/cobrar-cliente/{item['cliente_id']}"
-        item["enviar_oficial_url"] = f"/enviar-cobranca-oficial-agrupado/{item['cliente_id']}"
+        item["cobrar_url"] = f"/cobrar-cliente/{item['cliente_id']}/{item['data_vencimento']}"
         resultado.append(item)
 
-    resultado.sort(key=lambda x: x["cliente_nome"].lower())
+    resultado.sort(key=lambda x: (x["data_vencimento"], x["cliente_nome"].lower()))
     return resultado
 
 
@@ -891,29 +901,35 @@ def pagar(request: Request, payload: BaixarCobranca):
     return {"ok": True}
 
 
-@app.get("/cobrar-cliente/{cliente_id}")
-def cobrar_cliente_agrupado(cliente_id: int, request: Request):
+@app.get("/cobrar-cliente/{cliente_id}/{data_vencimento}")
+def cobrar_cliente_agrupado(cliente_id: int, data_vencimento: str, request: Request):
     redir = exigir_login(request)
     if redir:
         return redir
 
     db = SessionLocal()
-    hoje = date.today()
+
+    data = datetime.strptime(data_vencimento, "%Y-%m-%d").date()
 
     contas = db.query(Conta).options(
         joinedload(Conta.cliente)
     ).filter(
         Conta.cliente_id == cliente_id,
-        Conta.status == "pendente",
-        Conta.data_vencimento <= hoje
-    ).order_by(Conta.data_vencimento.asc()).all()
+        Conta.data_vencimento == data,
+        Conta.status == "pendente"
+    ).all()
 
     if not contas:
         db.close()
         return RedirectResponse(url="/cobrancas", status_code=303)
 
     cliente = contas[0].cliente
-    telefone = telefone_whatsapp(cliente.telefone if cliente else "")
+    telefone = ""
+
+    if cliente and cliente.telefone:
+        telefone = "".join(filter(str.isdigit, cliente.telefone))
+        if telefone and not telefone.startswith("55"):
+            telefone = "55" + telefone
 
     linhas = []
     valor_total = 0.0
@@ -927,8 +943,6 @@ def cobrar_cliente_agrupado(cliente_id: int, request: Request):
             linha += f"\nUsuário: {conta.login}"
         if conta.perfil:
             linha += f"\nPerfil: {conta.perfil}"
-        if conta.data_vencimento:
-            linha += f"\nVencimento: {conta.data_vencimento.strftime('%d/%m/%Y')}"
 
         linhas.append(linha)
 
@@ -937,7 +951,7 @@ def cobrar_cliente_agrupado(cliente_id: int, request: Request):
 
     mensagem = (
         f"Olá {cliente.nome if cliente else ''}, tudo bem?\n\n"
-        f"Os seguintes serviços estão pendentes:\n\n"
+        f"Os seguintes serviços estão vencidos:\n\n"
         + "\n\n".join(linhas)
         + f"\n\nValor total: R$ {valor_total:.2f}\n\n"
         f"Me avisa após o pagamento."
@@ -950,6 +964,7 @@ def cobrar_cliente_agrupado(cliente_id: int, request: Request):
         )
 
     return RedirectResponse(url="/cobrados", status_code=303)
+
 
 @app.get("/cobrados", response_class=HTMLResponse)
 def cobrados(request: Request):
@@ -1152,32 +1167,25 @@ def deletar_usuario(request: Request, id: int):
     db.close()
     return RedirectResponse(url="/usuarios", status_code=303)
     
-@app.get("/enviar-cobranca-oficial-agrupado/{cliente_id}")
-def enviar_cobranca_oficial_agrupado(cliente_id: int, request: Request):
+@app.get("/enviar-cobranca-oficial/{conta_id}")
+def enviar_cobranca_oficial(conta_id: int, request: Request):
     redir = exigir_login(request)
     if redir:
         return redir
 
     db = SessionLocal()
-    hoje = date.today()
 
-    contas = db.query(Conta).options(
+    conta = db.query(Conta).options(
         joinedload(Conta.cliente)
-    ).filter(
-        Conta.cliente_id == cliente_id,
-        Conta.status == "pendente",
-        Conta.data_vencimento <= hoje
-    ).order_by(Conta.data_vencimento.asc()).all()
+    ).filter(Conta.id == conta_id).first()
 
-    if not contas:
+    if not conta:
         db.close()
-        return HTMLResponse("❌ Nenhuma conta pendente encontrada", status_code=404)
+        return HTMLResponse("❌ Conta não encontrada", status_code=404)
 
-    cliente = contas[0].cliente
-
-    if not cliente:
+    if not conta.cliente:
         db.close()
-        return HTMLResponse("❌ Cliente não encontrado", status_code=404)
+        return HTMLResponse("❌ Conta sem cliente vinculado", status_code=400)
 
     token = os.getenv("WHATSAPP_TOKEN")
     phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
@@ -1196,21 +1204,14 @@ def enviar_cobranca_oficial_agrupado(cliente_id: int, request: Request):
         db.close()
         return HTMLResponse("❌ WHATSAPP_TEMPLATE_NAME não configurado no Render", status_code=500)
 
-    telefone = telefone_whatsapp(cliente.telefone or "")
+    telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
 
     if not telefone:
         db.close()
         return HTMLResponse("❌ Cliente sem telefone cadastrado", status_code=400)
 
-    servico_texto, usuario_texto, valor_texto = montar_textos_agrupados(contas)
-    vencimento_texto = "Vários vencimentos"
-
-    url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
-
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
+    if not telefone.startswith("55"):
+        telefone = "55" + telefone
 
     data = {
         "messaging_product": "whatsapp",
@@ -1225,15 +1226,22 @@ def enviar_cobranca_oficial_agrupado(cliente_id: int, request: Request):
                 {
                     "type": "body",
                     "parameters": [
-                        {"type": "text", "text": cliente.nome or "-"},
-                        {"type": "text", "text": servico_texto},
-                        {"type": "text", "text": usuario_texto},
-                        {"type": "text", "text": valor_texto},
-                        {"type": "text", "text": vencimento_texto}
+                        {"type": "text", "text": conta.cliente.nome or "-"},
+                        {"type": "text", "text": conta.servico or "-"},
+                        {"type": "text", "text": conta.login or "-"},
+                        {"type": "text", "text": f"{float(conta.valor or 0):.2f}"},
+                        {"type": "text", "text": conta.data_vencimento.strftime("%d/%m/%Y") if conta.data_vencimento else "-"}
                     ]
                 }
             ]
         }
+    }
+
+    url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
     }
 
     try:
@@ -1242,8 +1250,16 @@ def enviar_cobranca_oficial_agrupado(cliente_id: int, request: Request):
         print("RESPOSTA:", response.text)
 
         if response.ok:
-            for conta in contas:
-                conta.status = "cobrado"
+            resposta_json = response.json()
+            message_id = None
+
+            if resposta_json.get("messages"):
+                message_id = resposta_json["messages"][0].get("id")
+
+            conta.status = "cobrado"
+
+            if message_id:
+                salvar_message_id_nas_contas([conta], message_id)
 
             db.commit()
             db.close()
@@ -1261,15 +1277,15 @@ def enviar_cobranca_oficial_agrupado(cliente_id: int, request: Request):
 @app.get("/enviar-cobrancas-automatico")
 def enviar_cobrancas_automatico():
     db = SessionLocal()
+
     hoje = date.today()
 
     contas = db.query(Conta).options(
         joinedload(Conta.cliente)
     ).filter(
         Conta.status == "pendente",
-        Conta.cliente_id.isnot(None),
         Conta.data_vencimento <= hoje
-    ).order_by(Conta.cliente_id.asc(), Conta.data_vencimento.asc()).all()
+    ).all()
 
     token = os.getenv("WHATSAPP_TOKEN")
     phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
@@ -1279,31 +1295,14 @@ def enviar_cobrancas_automatico():
     enviados = 0
     erros = 0
 
-    agrupadas = {}
     for conta in contas:
-        agrupadas.setdefault(conta.cliente_id, []).append(conta)
-
-    for _, contas_grupo in agrupadas.items():
-        cliente = contas_grupo[0].cliente
-
-        if not cliente or not cliente.telefone:
-            erros += 1
+        if not conta.cliente or not conta.cliente.telefone:
             continue
 
-        telefone = telefone_whatsapp(cliente.telefone or "")
-        if not telefone:
-            erros += 1
-            continue
+        telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
 
-        servico_texto, usuario_texto, valor_texto = montar_textos_agrupados(contas_grupo)
-        vencimento_texto = "Vários vencimentos"
-
-        url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
-
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
+        if not telefone.startswith("55"):
+            telefone = "55" + telefone
 
         data = {
             "messaging_product": "whatsapp",
@@ -1318,26 +1317,41 @@ def enviar_cobrancas_automatico():
                     {
                         "type": "body",
                         "parameters": [
-                            {"type": "text", "text": cliente.nome or "-"},
-                            {"type": "text", "text": servico_texto},
-                            {"type": "text", "text": usuario_texto},
-                            {"type": "text", "text": valor_texto},
-                            {"type": "text", "text": vencimento_texto}
+                            {"type": "text", "text": conta.cliente.nome or "-"},
+                            {"type": "text", "text": conta.servico or "-"},
+                            {"type": "text", "text": conta.login or "-"},
+                            {"type": "text", "text": f"{float(conta.valor or 0):.2f}"},
+                            {"type": "text", "text": conta.data_vencimento.strftime("%d/%m/%Y") if conta.data_vencimento else "-"}
                         ]
                     }
                 ]
             }
         }
 
+        url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
         try:
             response = requests.post(url, headers=headers, json=data, timeout=30)
 
             if response.ok:
-                for conta in contas_grupo:
-                    conta.status = "cobrado"
+                resposta_json = response.json()
+                message_id = None
+
+                if resposta_json.get("messages"):
+                    message_id = resposta_json["messages"][0].get("id")
+
+                conta.status = "cobrado"
+
+                if message_id:
+                    salvar_message_id_nas_contas([conta], message_id)
+
                 enviados += 1
             else:
-                print("ERRO WHATSAPP:", response.text)
                 erros += 1
 
         except Exception as e:
@@ -1354,6 +1368,49 @@ def enviar_cobrancas_automatico():
         "erros": erros
     }
 
+
+@app.get("/webhook-whatsapp")
+def verificar_webhook_whatsapp(request: Request):
+    mode = request.query_params.get("hub.mode")
+    token = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge")
+
+    verify_token = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
+
+    if mode == "subscribe" and token == verify_token:
+        return HTMLResponse(content=challenge or "", status_code=200)
+
+    return HTMLResponse(content="Token inválido", status_code=403)
+
+
+@app.post("/webhook-whatsapp")
+async def receber_webhook_whatsapp(request: Request):
+    body = await request.json()
+    print("WEBHOOK WHATSAPP:", json.dumps(body, ensure_ascii=False))
+
+    try:
+        db = SessionLocal()
+
+        entries = body.get("entry", [])
+        for entry in entries:
+            changes = entry.get("changes", [])
+            for change in changes:
+                value = change.get("value", {})
+
+                statuses = value.get("statuses", [])
+                for status_item in statuses:
+                    message_id = status_item.get("id")
+                    status = status_item.get("status")
+
+                    if message_id and status:
+                        atualizar_status_por_message_id(db, message_id, status)
+
+        db.close()
+        return {"ok": True}
+
+    except Exception as e:
+        print("ERRO WEBHOOK:", str(e))
+        return {"ok": False, "erro": str(e)}
 
 @app.get("/gerar-pix/{conta_id}")
 def gerar_pix(conta_id: int, request: Request):
