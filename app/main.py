@@ -1175,120 +1175,87 @@ def deletar_usuario(request: Request, id: int):
     db.close()
     return RedirectResponse(url="/usuarios", status_code=303)
     
-@app.get("/enviar-cobranca-oficial/{conta_id}")
-def enviar_cobranca_oficial(conta_id: int, ):
-    
-    
-       
+@app.get("/enviar-cobrancas-automatico")
+def enviar_cobrancas_automatico():
+    print("✅ ENTROU NA ROTA AUTOMATICA")
 
     db = SessionLocal()
+    hoje = date.today()
 
-    print("DEBUG conta_id recebido:", conta_id)
-    print("DEBUG DATABASE_URL:", os.getenv("DATABASE_URL"))
-
-    contas_debug = db.query(Conta).all()
-    print("DEBUG ids no banco:", [c.id for c in contas_debug])
-
-    conta = db.query(Conta).options(
+    contas = db.query(Conta).options(
         joinedload(Conta.cliente)
-    ).filter(Conta.id == conta_id).first()
-
-    print("DEBUG conta encontrada:", conta)
-
-    if not conta:
-        db.close()
-        return HTMLResponse(f"❌ Conta não encontrada: {conta_id}", status_code=404)
-
-    if not conta.cliente:
-        db.close()
-        return HTMLResponse("❌ Conta sem cliente vinculado", status_code=400)
+    ).filter(
+        Conta.status == "pendente",
+        Conta.data_vencimento <= hoje
+    ).all()
 
     token = os.getenv("WHATSAPP_TOKEN")
     phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
     template_name = os.getenv("WHATSAPP_TEMPLATE_NAME")
     template_lang = os.getenv("WHATSAPP_TEMPLATE_LANG", "pt_BR")
 
-    if not token:
-        db.close()
-        return HTMLResponse("❌ WHATSAPP_TOKEN não configurado no Render", status_code=500)
+    enviados = 0
+    erros = 0
 
-    if not phone_id:
-        db.close()
-        return HTMLResponse("❌ WHATSAPP_PHONE_NUMBER_ID não configurado no Render", status_code=500)
+    for conta in contas:
+        if not conta.cliente or not conta.cliente.telefone:
+            continue
 
-    if not template_name:
-        db.close()
-        return HTMLResponse("❌ WHATSAPP_TEMPLATE_NAME não configurado no Render", status_code=500)
+        telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
 
-    telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
+        if not telefone.startswith("55"):
+            telefone = "55" + telefone
 
-    if not telefone:
-        db.close()
-        return HTMLResponse("❌ Cliente sem telefone cadastrado", status_code=400)
-
-    if not telefone.startswith("55"):
-        telefone = "55" + telefone
-
-    data = {
-        "messaging_product": "whatsapp",
-        "to": telefone,
-        "type": "template",
-        "template": {
-            "name": template_name,
-            "language": {
-                "code": template_lang
-            },
-            "components": [
-                {
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": conta.cliente.nome or "-"},
-                        {"type": "text", "text": conta.servico or "-"},
-                        {"type": "text", "text": conta.login or "-"},
-                        {"type": "text", "text": f"{float(conta.valor or 0):.2f}"},
-                        {"type": "text", "text": conta.data_vencimento.strftime("%d/%m/%Y") if conta.data_vencimento else "-"}
-                    ]
-                }
-            ]
+        data = {
+            "messaging_product": "whatsapp",
+            "to": telefone,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {
+                    "code": template_lang
+                },
+                "components": [
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {"type": "text", "text": conta.cliente.nome or ""},
+                            {"type": "text", "text": conta.servico or ""},
+                            {"type": "text", "text": conta.login or ""},
+                            {"type": "text", "text": f"R$ {conta.valor:.2f}"},
+                            {"type": "text", "text": conta.data_vencimento.strftime("%d/%m/%Y")},
+                        ]
+                    }
+                ]
+            }
         }
-    }
 
-    url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
 
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
+        response = requests.post(
+            f"https://graph.facebook.com/v20.0/{phone_id}/messages",
+            headers=headers,
+            json=data,
+            timeout=30
+        )
 
-    try:
-        response = requests.post(url, headers=headers, json=data, timeout=30)
-        print("STATUS:", response.status_code)
-        print("RESPOSTA:", response.text)
+        print("DEBUG AUTO STATUS:", response.status_code)
+        print("DEBUG AUTO RESPOSTA:", response.text)
 
-        if response.ok:
-            resposta_json = response.json()
-            message_id = None
-
-            if resposta_json.get("messages"):
-                message_id = resposta_json["messages"][0].get("id")
-
-            conta.status = "cobrado"
-
-            if message_id:
-                salvar_message_id_nas_contas([conta], message_id)
-
-            db.commit()
-            db.close()
-            return RedirectResponse(url="/cobrados", status_code=303)
+        if response.status_code in [200, 201]:
+            enviados += 1
         else:
-            erro = response.text
-            db.close()
-            return HTMLResponse(f"❌ Erro ao enviar WhatsApp:<br><pre>{erro}</pre>", status_code=400)
+            erros += 1
 
-    except Exception as e:
-        db.close()
-        return HTMLResponse(f"❌ Erro interno: {str(e)}", status_code=500)
-
+    db.close()
+    return {"ok": True, "data": str(hoje), "enviados": enviados, "erros": erros}
+    
+@app.get("/teste-auto")
+def teste_auto():
+    return {"ok": True, "rota": "teste-auto"}
 
 @app.get("/enviar-cobrancas-automatico")
 def enviar_cobrancas_automatico():
