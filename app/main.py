@@ -1489,3 +1489,10 @@ for r in app.routes:
         print(r.path, r.methods)
     except Exception:
         print(r)
+        
+print("ROTAS FINAIS:")
+for r in app.routes:
+    try:
+        print(r.path, r.methods)
+    except Exception:
+        print(r)
