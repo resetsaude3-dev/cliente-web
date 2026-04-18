@@ -103,8 +103,21 @@ def usuario_logado(request: Request):
 
 
 def exigir_login(request: Request):
+    path = request.url.path
+
+    # libera rotas públicas
+    if (
+        path.startswith("/docs") or
+        path.startswith("/openapi") or
+        path.startswith("/redoc") or
+        path.startswith("/webhook-whatsapp")
+    ):
+        return None
+
+    # proteção normal
     if not usuario_logado(request):
         return RedirectResponse(url="/login", status_code=303)
+
     return None
 
 
