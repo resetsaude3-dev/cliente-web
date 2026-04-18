@@ -21,13 +21,18 @@ from fastapi.responses import RedirectResponse
 
 print("🔥 APP INICIOU 🔥")
 
-app = FastAPI()
+app = FastAPI(
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 @app.get("/", include_in_schema=False)
 def home():
     return RedirectResponse(url="/dashboard")
 
-Base.metadata.create_all(bind=engine)
+@app.on_event("startup")
+def startup():
+    Base.metadata.create_all(bind=engine)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
