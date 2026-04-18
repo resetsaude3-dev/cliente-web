@@ -16,10 +16,16 @@ from passlib.context import CryptContext
 
 from app.database import Base, engine, SessionLocal
 from app.models import Usuario, Cliente, Conta
+from fastapi.responses import RedirectResponse
+
 
 print("🔥 APP INICIOU 🔥")
 
 app = FastAPI()
+
+@app.get("/", include_in_schema=False)
+def home():
+    return RedirectResponse(url="/dashboard")
 
 Base.metadata.create_all(bind=engine)
 
