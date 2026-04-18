@@ -32,8 +32,34 @@ class BaixarCobranca(BaseModel):
     data_vencimento: str
 
 
+def telefone_whatsapp(telefone: str) -> str:
+    telefone = "".join(filter(str.isdigit, telefone or ""))
+    if telefone and not telefone.startswith("55"):
+        telefone = "55" + telefone
+    return telefone
+
+
+def montar_textos_agrupados(contas):
+    servicos = []
+    usuarios = []
+    valor_total = 0.0
+
+    for conta in contas:
+        if conta.servico:
+            servicos.append(conta.servico)
+        if conta.login:
+            usuarios.append(conta.login)
+        valor_total += float(conta.valor or 0)
+
+    servico_texto = " + ".join(servicos) if servicos else "-"
+    usuario_texto = " / ".join(usuarios) if usuarios else "-"
+    valor_texto = f"{valor_total:.2f}"
+
+    return servico_texto, usuario_texto, valor_texto
+
+
 # =========================
-# FUNCOES AUXILIARES
+# SENHA / LOGIN
 # =========================
 def gerar_hash_senha(senha: str) -> str:
     return pwd_context.hash(senha)
@@ -54,46 +80,6 @@ def exigir_login(request: Request):
     if not usuario_logado(request):
         return RedirectResponse(url="/login", status_code=303)
     return None
-
-
-def telefone_whatsapp(telefone: str) -> str:
-    telefone_limpo = "".join(filter(str.isdigit, telefone or ""))
-    if telefone_limpo and not telefone_limpo.startswith("55"):
-        telefone_limpo = "55" + telefone_limpo
-    return telefone_limpo
-
-
-def link_deflow() -> str:
-    slug = os.getenv("DEFLOW_SLUG", "").strip()
-    if slug:
-        return f"https://deflow.exchange/invoice/{slug}"
-    return "https://deflow.exchange/invoice/deflow-edit"
-
-
-def montar_mensagem_cobranca(
-    nome_cliente: str,
-    servicos_texto: str,
-    valor_texto: str,
-    vencimento_texto: str = None
-) -> str:
-    mensagem = (
-        f"Olá {nome_cliente}, tudo bem?\n\n"
-        f"Identificamos um pagamento pendente referente ao seu serviço.\n\n"
-        f"{servicos_texto}\n"
-        f"Valor: {valor_texto}\n"
-    )
-
-    if vencimento_texto:
-        mensagem += f"Vencimento: {vencimento_texto}\n"
-
-    mensagem += (
-        f"\nPedimos, por gentileza, que verifique a situação.\n\n"
-        f"Se o pagamento já foi realizado, por favor desconsidere esta mensagem.\n\n"
-        f"Estamos à disposição para qualquer dúvida.\n\n"
-        f"Link para pagamento:\n{link_deflow()}"
-    )
-
-    return mensagem
 
 
 @app.on_event("startup")
@@ -281,12 +267,12 @@ def montar_cobrancas_pendentes(db):
         Conta.status == "pendente",
         Conta.cliente_id.isnot(None),
         Conta.data_vencimento <= hoje
-    ).order_by(Conta.data_vencimento.asc()).all()
+    ).order_by(Conta.cliente_id.asc(), Conta.data_vencimento.asc()).all()
 
     agrupadas = {}
 
     for conta in contas:
-        chave = (conta.cliente_id, conta.data_vencimento.isoformat())
+        chave = conta.cliente_id
 
         nome_cliente = conta.cliente.nome if conta.cliente else "Sem nome"
         telefone_cliente = conta.cliente.telefone if conta.cliente and conta.cliente.telefone else ""
@@ -296,12 +282,11 @@ def montar_cobrancas_pendentes(db):
                 "cliente_id": conta.cliente_id,
                 "cliente_nome": nome_cliente,
                 "telefone": telefone_cliente,
-                "data_vencimento": conta.data_vencimento.isoformat(),
                 "servicos": [],
                 "contas_detalhes": [],
                 "valor_total": 0.0,
                 "total_contas": 0,
-                "tipo": "vence_hoje" if conta.data_vencimento == hoje else "atrasada"
+                "datas_vencimento": []
             }
 
         agrupadas[chave]["servicos"].append(conta.servico)
@@ -310,10 +295,13 @@ def montar_cobrancas_pendentes(db):
             "servico": conta.servico,
             "login": conta.login or "",
             "perfil": conta.perfil or "",
-            "valor": float(conta.valor or 0)
+            "valor": float(conta.valor or 0),
+            "data_vencimento": conta.data_vencimento.strftime("%d/%m/%Y") if conta.data_vencimento else "-"
         })
         agrupadas[chave]["valor_total"] += float(conta.valor or 0)
         agrupadas[chave]["total_contas"] += 1
+        if conta.data_vencimento:
+            agrupadas[chave]["datas_vencimento"].append(conta.data_vencimento)
 
     resultado = []
 
@@ -321,20 +309,20 @@ def montar_cobrancas_pendentes(db):
         linhas = []
 
         for c in item["contas_detalhes"]:
-            linha = f"Serviço: {c['servico']}"
+            linha = f"{c['servico']}"
             if c["login"]:
                 linha += f"\nUsuário: {c['login']}"
             if c["perfil"]:
                 linha += f"\nPerfil: {c['perfil']}"
+            linha += f"\nVencimento: {c['data_vencimento']}"
             linhas.append(linha)
 
-        servicos_texto = "\n\n".join(linhas)
-
-        mensagem = montar_mensagem_cobranca(
-            nome_cliente=item["cliente_nome"],
-            servicos_texto=servicos_texto,
-            valor_texto=f"R$ {item['valor_total']:.2f}",
-            vencimento_texto=datetime.strptime(item["data_vencimento"], "%Y-%m-%d").strftime("%d/%m/%Y")
+        mensagem = (
+            f"Olá {item['cliente_nome']}, tudo bem?\n\n"
+            f"Os seguintes serviços estão pendentes:\n\n"
+            + "\n\n".join(linhas)
+            + f"\n\nValor total: R$ {item['valor_total']:.2f}\n\n"
+            f"Me avisa após o pagamento."
         )
 
         telefone = telefone_whatsapp(item["telefone"])
@@ -344,10 +332,11 @@ def montar_cobrancas_pendentes(db):
             whatsapp = f"https://wa.me/{telefone}?text={quote(mensagem)}"
 
         item["whatsapp"] = whatsapp
-        item["cobrar_url"] = f"/cobrar-cliente/{item['cliente_id']}/{item['data_vencimento']}"
+        item["cobrar_url"] = f"/cobrar-cliente/{item['cliente_id']}"
+        item["enviar_oficial_url"] = f"/enviar-cobranca-oficial-agrupado/{item['cliente_id']}"
         resultado.append(item)
 
-    resultado.sort(key=lambda x: (x["data_vencimento"], x["cliente_nome"].lower()))
+    resultado.sort(key=lambda x: x["cliente_nome"].lower())
     return resultado
 
 
@@ -902,35 +891,29 @@ def pagar(request: Request, payload: BaixarCobranca):
     return {"ok": True}
 
 
-@app.get("/cobrar-cliente/{cliente_id}/{data_vencimento}")
-def cobrar_cliente_agrupado(cliente_id: int, data_vencimento: str, request: Request):
+@app.get("/cobrar-cliente/{cliente_id}")
+def cobrar_cliente_agrupado(cliente_id: int, request: Request):
     redir = exigir_login(request)
     if redir:
         return redir
 
     db = SessionLocal()
-
-    data = datetime.strptime(data_vencimento, "%Y-%m-%d").date()
+    hoje = date.today()
 
     contas = db.query(Conta).options(
         joinedload(Conta.cliente)
     ).filter(
         Conta.cliente_id == cliente_id,
-        Conta.data_vencimento == data,
-        Conta.status == "pendente"
-    ).all()
+        Conta.status == "pendente",
+        Conta.data_vencimento <= hoje
+    ).order_by(Conta.data_vencimento.asc()).all()
 
     if not contas:
         db.close()
         return RedirectResponse(url="/cobrancas", status_code=303)
 
     cliente = contas[0].cliente
-    telefone = ""
-
-    if cliente and cliente.telefone:
-        telefone = "".join(filter(str.isdigit, cliente.telefone))
-        if telefone and not telefone.startswith("55"):
-            telefone = "55" + telefone
+    telefone = telefone_whatsapp(cliente.telefone if cliente else "")
 
     linhas = []
     valor_total = 0.0
@@ -939,29 +922,25 @@ def cobrar_cliente_agrupado(cliente_id: int, data_vencimento: str, request: Requ
         conta.status = "cobrado"
         valor_total += float(conta.valor or 0)
 
-        linha = f"Serviço: {conta.servico}"
+        linha = f"{conta.servico}"
         if conta.login:
             linha += f"\nUsuário: {conta.login}"
         if conta.perfil:
             linha += f"\nPerfil: {conta.perfil}"
+        if conta.data_vencimento:
+            linha += f"\nVencimento: {conta.data_vencimento.strftime('%d/%m/%Y')}"
 
         linhas.append(linha)
 
     db.commit()
     db.close()
 
-    link_pagamento = link_deflow()
-
     mensagem = (
         f"Olá {cliente.nome if cliente else ''}, tudo bem?\n\n"
-        f"Identificamos um pagamento pendente referente ao seu serviço.\n\n"
+        f"Os seguintes serviços estão pendentes:\n\n"
         + "\n\n".join(linhas)
-        + f"\n\nValor total: R$ {valor_total:.2f}\n"
-        + f"Vencimento: {data.strftime('%d/%m/%Y')}\n\n"
-        + "Pedimos, por gentileza, que verifique a situação.\n\n"
-        + "Se o pagamento já foi realizado, por favor desconsidere esta mensagem.\n\n"
-        + "Estamos à disposição para qualquer dúvida.\n\n"
-        + f"Link para pagamento:\n{link_pagamento}"
+        + f"\n\nValor total: R$ {valor_total:.2f}\n\n"
+        f"Me avisa após o pagamento."
     )
 
     if telefone:
@@ -971,7 +950,6 @@ def cobrar_cliente_agrupado(cliente_id: int, data_vencimento: str, request: Requ
         )
 
     return RedirectResponse(url="/cobrados", status_code=303)
-
 
 @app.get("/cobrados", response_class=HTMLResponse)
 def cobrados(request: Request):
@@ -1173,30 +1151,38 @@ def deletar_usuario(request: Request, id: int):
 
     db.close()
     return RedirectResponse(url="/usuarios", status_code=303)
-
-
-@app.get("/enviar-cobranca-oficial/{conta_id}")
-def enviar_cobranca_oficial(conta_id: int, request: Request):
+    
+@app.get("/enviar-cobranca-oficial-agrupado/{cliente_id}")
+def enviar_cobranca_oficial_agrupado(cliente_id: int, request: Request):
     redir = exigir_login(request)
     if redir:
         return redir
 
     db = SessionLocal()
+    hoje = date.today()
 
-    conta = db.query(Conta).options(
+    contas = db.query(Conta).options(
         joinedload(Conta.cliente)
-    ).filter(Conta.id == conta_id).first()
+    ).filter(
+        Conta.cliente_id == cliente_id,
+        Conta.status == "pendente",
+        Conta.data_vencimento <= hoje
+    ).order_by(Conta.data_vencimento.asc()).all()
 
-    if not conta:
+    if not contas:
         db.close()
-        return HTMLResponse("❌ Conta não encontrada", status_code=404)
+        return HTMLResponse("❌ Nenhuma conta pendente encontrada", status_code=404)
 
-    if not conta.cliente:
+    cliente = contas[0].cliente
+
+    if not cliente:
         db.close()
-        return HTMLResponse("❌ Conta sem cliente vinculado", status_code=400)
+        return HTMLResponse("❌ Cliente não encontrado", status_code=404)
 
     token = os.getenv("WHATSAPP_TOKEN")
     phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+    template_name = os.getenv("WHATSAPP_TEMPLATE_NAME")
+    template_lang = os.getenv("WHATSAPP_TEMPLATE_LANG", "pt_BR")
 
     if not token:
         db.close()
@@ -1206,26 +1192,18 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
         db.close()
         return HTMLResponse("❌ WHATSAPP_PHONE_NUMBER_ID não configurado no Render", status_code=500)
 
-    telefone = telefone_whatsapp(conta.cliente.telefone or "")
+    if not template_name:
+        db.close()
+        return HTMLResponse("❌ WHATSAPP_TEMPLATE_NAME não configurado no Render", status_code=500)
+
+    telefone = telefone_whatsapp(cliente.telefone or "")
 
     if not telefone:
         db.close()
         return HTMLResponse("❌ Cliente sem telefone cadastrado", status_code=400)
 
-    link_pagamento = link_deflow()
-
-    servico_texto = f"Serviço: {conta.servico}"
-    if conta.login:
-        servico_texto += f"\nUsuário: {conta.login}"
-    if conta.perfil:
-        servico_texto += f"\nPerfil: {conta.perfil}"
-
-    mensagem = montar_mensagem_cobranca(
-        nome_cliente=conta.cliente.nome,
-        servicos_texto=servico_texto,
-        valor_texto=f"R$ {float(conta.valor or 0):.2f}",
-        vencimento_texto=conta.data_vencimento.strftime("%d/%m/%Y") if conta.data_vencimento else None
-    )
+    servico_texto, usuario_texto, valor_texto = montar_textos_agrupados(contas)
+    vencimento_texto = "Vários vencimentos"
 
     url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
 
@@ -1237,9 +1215,24 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
     data = {
         "messaging_product": "whatsapp",
         "to": telefone,
-        "type": "text",
-        "text": {
-            "body": mensagem
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {
+                "code": template_lang
+            },
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": cliente.nome or "-"},
+                        {"type": "text", "text": servico_texto},
+                        {"type": "text", "text": usuario_texto},
+                        {"type": "text", "text": valor_texto},
+                        {"type": "text", "text": vencimento_texto}
+                    ]
+                }
+            ]
         }
     }
 
@@ -1249,7 +1242,9 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
         print("RESPOSTA:", response.text)
 
         if response.ok:
-            conta.status = "cobrado"
+            for conta in contas:
+                conta.status = "cobrado"
+
             db.commit()
             db.close()
             return RedirectResponse(url="/cobrados", status_code=303)
@@ -1266,42 +1261,42 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
 @app.get("/enviar-cobrancas-automatico")
 def enviar_cobrancas_automatico():
     db = SessionLocal()
-
     hoje = date.today()
 
     contas = db.query(Conta).options(
         joinedload(Conta.cliente)
     ).filter(
         Conta.status == "pendente",
+        Conta.cliente_id.isnot(None),
         Conta.data_vencimento <= hoje
-    ).all()
+    ).order_by(Conta.cliente_id.asc(), Conta.data_vencimento.asc()).all()
 
     token = os.getenv("WHATSAPP_TOKEN")
     phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+    template_name = os.getenv("WHATSAPP_TEMPLATE_NAME")
+    template_lang = os.getenv("WHATSAPP_TEMPLATE_LANG", "pt_BR")
 
     enviados = 0
     erros = 0
 
+    agrupadas = {}
     for conta in contas:
-        if not conta.cliente or not conta.cliente.telefone:
+        agrupadas.setdefault(conta.cliente_id, []).append(conta)
+
+    for _, contas_grupo in agrupadas.items():
+        cliente = contas_grupo[0].cliente
+
+        if not cliente or not cliente.telefone:
+            erros += 1
             continue
 
-        telefone = telefone_whatsapp(conta.cliente.telefone or "")
+        telefone = telefone_whatsapp(cliente.telefone or "")
         if not telefone:
+            erros += 1
             continue
 
-        servico_texto = f"Serviço: {conta.servico}"
-        if conta.login:
-            servico_texto += f"\nUsuário: {conta.login}"
-        if conta.perfil:
-            servico_texto += f"\nPerfil: {conta.perfil}"
-
-        mensagem = montar_mensagem_cobranca(
-            nome_cliente=conta.cliente.nome,
-            servicos_texto=servico_texto,
-            valor_texto=f"R$ {float(conta.valor or 0):.2f}",
-            vencimento_texto=conta.data_vencimento.strftime("%d/%m/%Y") if conta.data_vencimento else None
-        )
+        servico_texto, usuario_texto, valor_texto = montar_textos_agrupados(contas_grupo)
+        vencimento_texto = "Vários vencimentos"
 
         url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
 
@@ -1313,17 +1308,36 @@ def enviar_cobrancas_automatico():
         data = {
             "messaging_product": "whatsapp",
             "to": telefone,
-            "type": "text",
-            "text": {"body": mensagem}
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {
+                    "code": template_lang
+                },
+                "components": [
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {"type": "text", "text": cliente.nome or "-"},
+                            {"type": "text", "text": servico_texto},
+                            {"type": "text", "text": usuario_texto},
+                            {"type": "text", "text": valor_texto},
+                            {"type": "text", "text": vencimento_texto}
+                        ]
+                    }
+                ]
+            }
         }
 
         try:
             response = requests.post(url, headers=headers, json=data, timeout=30)
 
             if response.ok:
-                conta.status = "cobrado"
+                for conta in contas_grupo:
+                    conta.status = "cobrado"
                 enviados += 1
             else:
+                print("ERRO WHATSAPP:", response.text)
                 erros += 1
 
         except Exception as e:
