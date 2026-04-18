@@ -1,4 +1,3 @@
-```python
 from datetime import date, datetime, timedelta
 from urllib.parse import quote
 import json
