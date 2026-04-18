@@ -33,7 +33,7 @@ class BaixarCobranca(BaseModel):
 
 
 # =========================
-# SENHA / LOGIN
+# FUNCOES AUXILIARES
 # =========================
 def gerar_hash_senha(senha: str) -> str:
     return pwd_context.hash(senha)
@@ -54,6 +54,46 @@ def exigir_login(request: Request):
     if not usuario_logado(request):
         return RedirectResponse(url="/login", status_code=303)
     return None
+
+
+def telefone_whatsapp(telefone: str) -> str:
+    telefone_limpo = "".join(filter(str.isdigit, telefone or ""))
+    if telefone_limpo and not telefone_limpo.startswith("55"):
+        telefone_limpo = "55" + telefone_limpo
+    return telefone_limpo
+
+
+def link_deflow() -> str:
+    slug = os.getenv("DEFLOW_SLUG", "").strip()
+    if slug:
+        return f"https://deflow.exchange/invoice/{slug}"
+    return "https://deflow.exchange/invoice/deflow-edit"
+
+
+def montar_mensagem_cobranca(
+    nome_cliente: str,
+    servicos_texto: str,
+    valor_texto: str,
+    vencimento_texto: str = None
+) -> str:
+    mensagem = (
+        f"Olá {nome_cliente}, tudo bem?\n\n"
+        f"Identificamos um pagamento pendente referente ao seu serviço.\n\n"
+        f"{servicos_texto}\n"
+        f"Valor: {valor_texto}\n"
+    )
+
+    if vencimento_texto:
+        mensagem += f"Vencimento: {vencimento_texto}\n"
+
+    mensagem += (
+        f"\nPedimos, por gentileza, que verifique a situação.\n\n"
+        f"Se o pagamento já foi realizado, por favor desconsidere esta mensagem.\n\n"
+        f"Estamos à disposição para qualquer dúvida.\n\n"
+        f"Link para pagamento:\n{link_deflow()}"
+    )
+
+    return mensagem
 
 
 @app.on_event("startup")
@@ -281,30 +321,26 @@ def montar_cobrancas_pendentes(db):
         linhas = []
 
         for c in item["contas_detalhes"]:
-            linha = f"{c['servico']}"
-
+            linha = f"Serviço: {c['servico']}"
             if c["login"]:
                 linha += f"\nUsuário: {c['login']}"
-
             if c["perfil"]:
                 linha += f"\nPerfil: {c['perfil']}"
-
             linhas.append(linha)
 
-        mensagem = (
-            f"Olá {item['cliente_nome']}, tudo bem?\n\n"
-            f"Os seguintes serviços estão vencidos:\n\n"
-            + "\n\n".join(linhas)
-            + f"\n\nValor total: R$ {item['valor_total']:.2f}\n\n"
-            f"Me avisa após o pagamento."
+        servicos_texto = "\n\n".join(linhas)
+
+        mensagem = montar_mensagem_cobranca(
+            nome_cliente=item["cliente_nome"],
+            servicos_texto=servicos_texto,
+            valor_texto=f"R$ {item['valor_total']:.2f}",
+            vencimento_texto=datetime.strptime(item["data_vencimento"], "%Y-%m-%d").strftime("%d/%m/%Y")
         )
 
-        telefone = "".join(filter(str.isdigit, item["telefone"] or ""))
+        telefone = telefone_whatsapp(item["telefone"])
         whatsapp = None
 
         if telefone:
-            if not telefone.startswith("55"):
-                telefone = "55" + telefone
             whatsapp = f"https://wa.me/{telefone}?text={quote(mensagem)}"
 
         item["whatsapp"] = whatsapp
@@ -903,7 +939,7 @@ def cobrar_cliente_agrupado(cliente_id: int, data_vencimento: str, request: Requ
         conta.status = "cobrado"
         valor_total += float(conta.valor or 0)
 
-        linha = f"{conta.servico}"
+        linha = f"Serviço: {conta.servico}"
         if conta.login:
             linha += f"\nUsuário: {conta.login}"
         if conta.perfil:
@@ -914,12 +950,18 @@ def cobrar_cliente_agrupado(cliente_id: int, data_vencimento: str, request: Requ
     db.commit()
     db.close()
 
+    link_pagamento = link_deflow()
+
     mensagem = (
         f"Olá {cliente.nome if cliente else ''}, tudo bem?\n\n"
-        f"Os seguintes serviços estão vencidos:\n\n"
+        f"Identificamos um pagamento pendente referente ao seu serviço.\n\n"
         + "\n\n".join(linhas)
-        + f"\n\nValor total: R$ {valor_total:.2f}\n\n"
-        f"Me avisa após o pagamento."
+        + f"\n\nValor total: R$ {valor_total:.2f}\n"
+        + f"Vencimento: {data.strftime('%d/%m/%Y')}\n\n"
+        + "Pedimos, por gentileza, que verifique a situação.\n\n"
+        + "Se o pagamento já foi realizado, por favor desconsidere esta mensagem.\n\n"
+        + "Estamos à disposição para qualquer dúvida.\n\n"
+        + f"Link para pagamento:\n{link_pagamento}"
     )
 
     if telefone:
@@ -1131,7 +1173,8 @@ def deletar_usuario(request: Request, id: int):
 
     db.close()
     return RedirectResponse(url="/usuarios", status_code=303)
-    
+
+
 @app.get("/enviar-cobranca-oficial/{conta_id}")
 def enviar_cobranca_oficial(conta_id: int, request: Request):
     redir = exigir_login(request)
@@ -1163,21 +1206,25 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
         db.close()
         return HTMLResponse("❌ WHATSAPP_PHONE_NUMBER_ID não configurado no Render", status_code=500)
 
-    telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
+    telefone = telefone_whatsapp(conta.cliente.telefone or "")
 
     if not telefone:
         db.close()
         return HTMLResponse("❌ Cliente sem telefone cadastrado", status_code=400)
 
-    if not telefone.startswith("55"):
-        telefone = "55" + telefone
+    link_pagamento = link_deflow()
 
-    mensagem = (
-        f"Olá {conta.cliente.nome}, tudo bem?\n\n"
-        f"Serviço: {conta.servico}\n"
-        f"Usuário: {conta.login or '-'}\n"
-        f"Valor: R$ {float(conta.valor or 0):.2f}\n\n"
-        f"Por favor, regularize o pagamento."
+    servico_texto = f"Serviço: {conta.servico}"
+    if conta.login:
+        servico_texto += f"\nUsuário: {conta.login}"
+    if conta.perfil:
+        servico_texto += f"\nPerfil: {conta.perfil}"
+
+    mensagem = montar_mensagem_cobranca(
+        nome_cliente=conta.cliente.nome,
+        servicos_texto=servico_texto,
+        valor_texto=f"R$ {float(conta.valor or 0):.2f}",
+        vencimento_texto=conta.data_vencimento.strftime("%d/%m/%Y") if conta.data_vencimento else None
     )
 
     url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
@@ -1214,7 +1261,8 @@ def enviar_cobranca_oficial(conta_id: int, request: Request):
     except Exception as e:
         db.close()
         return HTMLResponse(f"❌ Erro interno: {str(e)}", status_code=500)
-        
+
+
 @app.get("/enviar-cobrancas-automatico")
 def enviar_cobrancas_automatico():
     db = SessionLocal()
@@ -1238,20 +1286,22 @@ def enviar_cobrancas_automatico():
         if not conta.cliente or not conta.cliente.telefone:
             continue
 
-        telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
+        telefone = telefone_whatsapp(conta.cliente.telefone or "")
+        if not telefone:
+            continue
 
-        if not telefone.startswith("55"):
-            telefone = "55" + telefone
+        servico_texto = f"Serviço: {conta.servico}"
+        if conta.login:
+            servico_texto += f"\nUsuário: {conta.login}"
+        if conta.perfil:
+            servico_texto += f"\nPerfil: {conta.perfil}"
 
-        mensagem = f"""
-Olá {conta.cliente.nome}, tudo bem?
-
-Serviço: {conta.servico}
-Usuário: {conta.login}
-Valor: R$ {conta.valor}
-
-Por favor, regularize o pagamento.
-"""
+        mensagem = montar_mensagem_cobranca(
+            nome_cliente=conta.cliente.nome,
+            servicos_texto=servico_texto,
+            valor_texto=f"R$ {float(conta.valor or 0):.2f}",
+            vencimento_texto=conta.data_vencimento.strftime("%d/%m/%Y") if conta.data_vencimento else None
+        )
 
         url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
 
@@ -1268,7 +1318,7 @@ Por favor, regularize o pagamento.
         }
 
         try:
-            response = requests.post(url, headers=headers, json=data)
+            response = requests.post(url, headers=headers, json=data, timeout=30)
 
             if response.ok:
                 conta.status = "cobrado"
@@ -1289,7 +1339,8 @@ Por favor, regularize o pagamento.
         "enviados": enviados,
         "erros": erros
     }
-    
+
+
 @app.get("/gerar-pix/{conta_id}")
 def gerar_pix(conta_id: int, request: Request):
     redir = exigir_login(request)
