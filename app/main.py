@@ -26,10 +26,7 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-app = FastAPI(
-    docs_url="/docs",
-    redoc_url="/redoc"
-)
+
 
 print("ROTAS CARREGADAS:")
 for r in app.routes:
