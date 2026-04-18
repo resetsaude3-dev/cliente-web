@@ -1176,10 +1176,10 @@ def deletar_usuario(request: Request, id: int):
     return RedirectResponse(url="/usuarios", status_code=303)
     
 @app.get("/enviar-cobranca-oficial/{conta_id}")
-def enviar_cobranca_oficial(conta_id: int, request: Request):
-    redir = exigir_login(request)
-    if redir:
-        return redir
+def enviar_cobranca_oficial(conta_id: int, ):
+    
+    
+       
 
     db = SessionLocal()
 
