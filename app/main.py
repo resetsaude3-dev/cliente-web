@@ -17,6 +17,7 @@ from passlib.context import CryptContext
 from app.database import Base, engine, SessionLocal
 from app.models import Usuario, Cliente, Conta
 
+print("🔥 APP INICIOU 🔥")
 
 app = FastAPI()
 
