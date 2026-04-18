@@ -34,17 +34,13 @@ class BaixarCobranca(BaseModel):
 
 
 def garantir_colunas_whatsapp():
-    with engine.begin() as conn:
-        colunas = [row[1] for row in conn.exec_driver_sql("PRAGMA table_info(contas)").fetchall()]
-
-        if "whatsapp_message_id" not in colunas:
-            conn.exec_driver_sql("ALTER TABLE contas ADD COLUMN whatsapp_message_id TEXT")
-
-        if "whatsapp_status" not in colunas:
-            conn.exec_driver_sql("ALTER TABLE contas ADD COLUMN whatsapp_status TEXT")
-
-        if "whatsapp_status_at" not in colunas:
-            conn.exec_driver_sql("ALTER TABLE contas ADD COLUMN whatsapp_status_at TEXT")
+    try:
+        with engine.begin() as conn:
+            conn.exec_driver_sql("ALTER TABLE contas ADD COLUMN IF NOT EXISTS whatsapp_message_id TEXT")
+            conn.exec_driver_sql("ALTER TABLE contas ADD COLUMN IF NOT EXISTS whatsapp_status TEXT")
+            conn.exec_driver_sql("ALTER TABLE contas ADD COLUMN IF NOT EXISTS whatsapp_status_at TEXT")
+    except Exception as e:
+        print("Erro ao garantir colunas:", e)
 
 
 def salvar_message_id_nas_contas(contas, message_id: str):
