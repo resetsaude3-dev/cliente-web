@@ -28,13 +28,6 @@ app = FastAPI(
 
 
 
-print("ROTAS CARREGADAS:")
-for r in app.routes:
-    try:
-        print(r.path, r.methods)
-    except Exception:
-        print(r)
-
 @app.get("/", include_in_schema=False)
 def home():
     return RedirectResponse(url="/dashboard")
@@ -1495,3 +1488,11 @@ def gerar_pix(conta_id: int, request: Request):
 @app.get("/teste123")
 def teste123():
     return {"ok": True, "rota": "teste123"}
+    
+    
+print("ROTAS CARREGADAS:")
+for r in app.routes:
+    try:
+        print(r.path, r.methods)
+    except Exception:
+        print(r)
