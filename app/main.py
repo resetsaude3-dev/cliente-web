@@ -20,6 +20,10 @@ print("🔥 APP INICIOU 🔥")
 
 app = FastAPI()
 
+@app.on_event("startup")
+def startup():
+    garantir_colunas_whatsapp()
+
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
@@ -32,19 +36,25 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 def garantir_colunas_whatsapp():
     try:
         with engine.begin() as conn:
-            conn.exec_driver_sql("ALTER TABLE contas ADD COLUMN whatsapp_message_id TEXT")
+            conn.exec_driver_sql(
+                "ALTER TABLE contas ADD COLUMN whatsapp_message_id TEXT"
+            )
     except:
         pass
 
     try:
         with engine.begin() as conn:
-            conn.exec_driver_sql("ALTER TABLE contas ADD COLUMN whatsapp_status TEXT")
+            conn.exec_driver_sql(
+                "ALTER TABLE contas ADD COLUMN whatsapp_status TEXT"
+            )
     except:
         pass
 
     try:
         with engine.begin() as conn:
-            conn.exec_driver_sql("ALTER TABLE contas ADD COLUMN whatsapp_status_at TEXT")
+            conn.exec_driver_sql(
+                "ALTER TABLE contas ADD COLUMN whatsapp_status_at TEXT"
+            )
     except:
         pass
 
