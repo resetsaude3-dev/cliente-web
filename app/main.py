@@ -16,8 +16,6 @@ from passlib.context import CryptContext
 
 from app.database import Base, engine, SessionLocal
 from app.models import Usuario, Cliente, Conta
-from fastapi.responses import RedirectResponse
-
 
 print("🔥 APP INICIOU 🔥")
 
@@ -26,15 +24,9 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-
-
 @app.get("/", include_in_schema=False)
 def home():
-    return RedirectResponse(url="/dashboard")
-
-@app.on_event("startup")
-def startup():
-    Base.metadata.create_all(bind=engine)
+    return RedirectResponse(url="/dashboard", status_code=302)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
@@ -278,13 +270,6 @@ def trocar_senha(
             "sucesso": "Senha alterada com sucesso"
         }
     )
-
-
-@app.get("/")
-def home(request: Request):
-    if not usuario_logado(request):
-        return RedirectResponse(url="/login", status_code=303)
-    return RedirectResponse(url="/dashboard", status_code=302)
 
 
 # =========================
