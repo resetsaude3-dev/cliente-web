@@ -209,8 +209,6 @@ def enviar_cobrancas():
                         {"type": "text", "text": c.usuario},       # {{3}}
                         {"type": "text", "text": f"R$ {c.valor:.2f}"},  # {{4}}
                         {"type": "text", "text": c.data_vencimento.strftime("%d/%m/%Y")},  # {{5}}
-                        {"type": "text", "text": f"{os.getenv('APP_BASE_URL')}/pagar/{c.id}"}  # {{6}}
-                        
                     ]
                 }]
             }
