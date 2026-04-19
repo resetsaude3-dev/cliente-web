@@ -204,9 +204,13 @@ def enviar_cobrancas():
                 "components": [{
                     "type": "body",
                     "parameters": [
-                        {"type": "text", "text": c.cliente.nome},
-                        {"type": "text", "text": c.servico},
-                        {"type": "text", "text": f"{c.valor:.2f}"}
+                        {"type": "text", "text": c.cliente.nome},  # {{1}}
+                        {"type": "text", "text": c.servico},       # {{2}}
+                        {"type": "text", "text": c.usuario},       # {{3}}
+                        {"type": "text", "text": f"R$ {c.valor:.2f}"},  # {{4}}
+                        {"type": "text", "text": c.data_vencimento.strftime("%d/%m/%Y")},  # {{5}}
+                        {"type": "text", "text": f"{os.getenv('APP_BASE_URL')}/pagar/{c.id}"}  # {{6}}
+                        
                     ]
                 }]
             }
