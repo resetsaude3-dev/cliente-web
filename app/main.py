@@ -167,50 +167,57 @@ def dashboard(request: Request):
 @app.get("/teste-auto")
 def teste_auto():
     return {"status": "ok"}
-
-
+    
+    
+    
 # =========================
-# WHATSAPP AUTOMATICO
+# COBRANCA MANUAL (WHATSAPP TEMPLATE)
 # =========================
-@app.get("/enviar-cobrancas-automatico")
-def enviar_cobrancas():
+@app.get("/enviar-cobranca-oficial/{conta_id}")
+def enviar_cobranca_oficial(conta_id: int, request: Request):
+    redir = exigir_login(request)
+    if redir:
+        return redir
+
     db = SessionLocal()
-    hoje = date.today()
+    try:
+        conta = db.query(Conta).options(
+            joinedload(Conta.cliente)
+        ).filter(Conta.id == conta_id).first()
 
-    contas = db.query(Conta).options(joinedload(Conta.cliente)).filter(
-        Conta.status == "pendente",
-        Conta.data_vencimento <= hoje
-    ).all()
+        if not conta:
+            return HTMLResponse("❌ Conta não encontrada", status_code=404)
 
-    token = os.getenv("WHATSAPP_TOKEN")
-    phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
-    template = os.getenv("WHATSAPP_TEMPLATE_NAME")
+        if not conta.cliente or not conta.cliente.telefone:
+            return HTMLResponse("❌ Cliente sem telefone", status_code=400)
 
-    enviados = 0
+        telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
+        if not telefone.startswith("55"):
+            telefone = "55" + telefone
 
-    for c in contas:
-        if not c.cliente or not c.cliente.telefone:
-            continue
+        token = os.getenv("WHATSAPP_TOKEN")
+        phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+        template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "cobranca_link")
 
-        telefone = "55" + "".join(filter(str.isdigit, c.cliente.telefone))
-
-        data = {
+        payload = {
             "messaging_product": "whatsapp",
             "to": telefone,
             "type": "template",
             "template": {
-                "name": template,
+                "name": template_name,
                 "language": {"code": "pt_BR"},
-                "components": [{
-                    "type": "body",
-                    "parameters": [
-                        {"type": "text", "text": c.cliente.nome},  # {{1}}
-                        {"type": "text", "text": c.servico},       # {{2}}
-                        {"type": "text", "text": c.usuario},       # {{3}}
-                        {"type": "text", "text": f"R$ {c.valor:.2f}"},  # {{4}}
-                        {"type": "text", "text": c.data_vencimento.strftime("%d/%m/%Y")},  # {{5}}
-                    ]
-                }]
+                "components": [
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {"type": "text", "text": conta.cliente.nome},
+                            {"type": "text", "text": conta.servico},
+                            {"type": "text", "text": conta.login},
+                            {"type": "text", "text": f"R$ {conta.valor:.2f}".replace(".", ",")},
+                            {"type": "text", "text": conta.data_vencimento.strftime("%d/%m/%Y")}
+                        ]
+                    }
+                ]
             }
         }
 
@@ -219,20 +226,130 @@ def enviar_cobrancas():
             "Content-Type": "application/json"
         }
 
-        r = requests.post(
+        resp = requests.post(
             f"https://graph.facebook.com/v20.0/{phone_id}/messages",
             headers=headers,
-            json=data
+            json=payload,
+            timeout=30
         )
 
-        if r.ok:
-            c.status = "cobrado"
-            enviados += 1
+        print("MANUAL STATUS:", resp.status_code)
+        print("MANUAL RESPOSTA:", resp.text)
 
-    db.commit()
-    db.close()
+        if resp.status_code in [200, 201]:
+            conta.status = "cobrado"
+            db.commit()
+            return HTMLResponse("✅ Cobrança enviada com sucesso")
 
-    return {"ok": True, "enviados": enviados}
+        return HTMLResponse(f"❌ Erro:<br><pre>{resp.text}</pre>", status_code=500)
+
+    finally:
+        db.close()
+
+
+# =========================
+# WHATSAPP AUTOMATICO
+# =========================
+@app.get("/enviar-cobrancas-automatico")
+def enviar_cobrancas_automatico():
+    db = SessionLocal()
+    try:
+        hoje = date.today()
+
+        contas = db.query(Conta).options(
+            joinedload(Conta.cliente)
+        ).filter(
+            Conta.status == "pendente",
+            Conta.data_vencimento <= hoje
+        ).all()
+
+        token = os.getenv("WHATSAPP_TOKEN")
+        phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+        template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "cobranca_link")
+        template_lang = os.getenv("WHATSAPP_TEMPLATE_LANG", "pt_BR")
+
+        if not token or not phone_id:
+            return {
+                "ok": False,
+                "erro": "Variáveis do WhatsApp não configuradas no Render"
+            }
+
+        enviados = 0
+        erros = 0
+
+        for conta in contas:
+            try:
+                if not conta.cliente or not conta.cliente.telefone:
+                    erros += 1
+                    continue
+
+                telefone = "".join(filter(str.isdigit, conta.cliente.telefone or ""))
+                if not telefone:
+                    erros += 1
+                    continue
+
+                if not telefone.startswith("55"):
+                    telefone = "55" + telefone
+
+                payload = {
+                    "messaging_product": "whatsapp",
+                    "to": telefone,
+                    "type": "template",
+                    "template": {
+                        "name": template_name,
+                        "language": {
+                            "code": template_lang
+                        },
+                        "components": [
+                            {
+                                "type": "body",
+                                "parameters": [
+                                    {"type": "text", "text": conta.cliente.nome or ""},
+                                    {"type": "text", "text": conta.servico or ""},
+                                    {"type": "text", "text": conta.login or ""},
+                                    {"type": "text", "text": f"R$ {conta.valor:.2f}".replace(".", ",")},
+                                    {"type": "text", "text": conta.data_vencimento.strftime("%d/%m/%Y") if conta.data_vencimento else ""}
+                                ]
+                            }
+                        ]
+                    }
+                }
+
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json"
+                }
+
+                resp = requests.post(
+                    f"https://graph.facebook.com/v20.0/{phone_id}/messages",
+                    headers=headers,
+                    json=payload,
+                    timeout=30
+                )
+
+                print("AUTO STATUS:", resp.status_code)
+                print("AUTO RESPOSTA:", resp.text)
+
+                if resp.status_code in [200, 201]:
+                    conta.status = "cobrado"
+                    enviados += 1
+                else:
+                    erros += 1
+
+            except Exception as e:
+                print("ERRO AUTO:", str(e))
+                erros += 1
+
+        db.commit()
+
+        return {
+            "ok": True,
+            "data": str(hoje),
+            "enviados": enviados,
+            "erros": erros
+        }
+    finally:
+        db.close()
 
 
 # =========================
