@@ -1,4 +1,4 @@
-```python
+
 from datetime import date
 import os
 import requests
@@ -273,4 +273,4 @@ def backup():
     file = BytesIO(json.dumps(data).encode())
 
     return StreamingResponse(file, media_type="application/json")
-```
+
